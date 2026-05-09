@@ -6,6 +6,12 @@ from fastapi import FastAPI
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.api.calls import router as calls_router
+from app.api.clients import router as clients_router
+from app.api.dashboard import router as dashboard_router
+from app.api.middleware import APIKeyMiddleware, RateLimitMiddleware
+from app.api.tags import router as tags_router
+from app.api.taxonomy import router as taxonomy_router
 from app.core.config import settings
 from app.core.errors import DomainError, domain_error_handler, request_validation_error_handler, generic_error_handler
 
@@ -26,6 +32,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+if settings.AUTH_ENABLED:
+    app.add_middleware(APIKeyMiddleware)
+
+app.add_middleware(RateLimitMiddleware)
+
 app.add_exception_handler(DomainError, domain_error_handler)
 app.add_exception_handler(RequestValidationError, request_validation_error_handler)
 app.add_exception_handler(Exception, generic_error_handler)
@@ -35,6 +46,9 @@ app.add_exception_handler(Exception, generic_error_handler)
 async def health() -> dict[str, str]:
     return {"status": "ok"}
 
-# Business routers mount under /api — Phase 5 adds them:
-# from app.api.calls import router as calls_router
-# app.include_router(calls_router, prefix="/api")
+
+app.include_router(calls_router, prefix="/api")
+app.include_router(clients_router, prefix="/api")
+app.include_router(tags_router, prefix="/api")
+app.include_router(dashboard_router, prefix="/api")
+app.include_router(taxonomy_router, prefix="/api")
