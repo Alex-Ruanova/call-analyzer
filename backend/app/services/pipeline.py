@@ -25,6 +25,7 @@ from app.llm.schemas.tags import TagSuggestion
 from app.models.analysis import Analysis
 from app.models.call import Call
 from app.models.insight import ActionItem, Insight
+from app.models.participant import Participant
 from app.models.tag import Tag
 from app.models.transcript import Transcript, TranscriptSegment
 from app.providers.base import DiarizedSegment, DiarizedTranscript, LLMProvider, STTProvider
@@ -572,7 +573,16 @@ async def synthesis_stage(
         cost = llm_result.usage.cost_usd
         synth: Synthesis = llm_result.parsed
 
-        talk_ratio_rep, talk_ratio_client = _compute_talk_ratios(segments)
+        # If the user has already labelled who's the rep on this call (from a
+        # prior session or via reanalyze), respect it. Otherwise the helper
+        # falls back to the dominant-speaker heuristic.
+        rep_labels_rows = await session.execute(
+            select(Participant.speaker_label).where(
+                Participant.call_id == call_id, Participant.side == "rep"
+            )
+        )
+        rep_labels: set[str] = {row[0] for row in rep_labels_rows.fetchall()}
+        talk_ratio_rep, talk_ratio_client = _compute_talk_ratios(segments, rep_labels)
 
         # Persist the LLM-detected language back to the call/transcript so the UI
         # can show it instead of guessing. STT (diarized_json) does not return it.
@@ -601,7 +611,17 @@ async def synthesis_stage(
         return analysis, cost
 
 
-def _compute_talk_ratios(segments: list[TranscriptSegment]) -> tuple[float, float]:
+def _compute_talk_ratios(
+    segments: list[TranscriptSegment],
+    rep_labels: set[str] | None = None,
+) -> tuple[float, float]:
+    """Return (rep_fraction, client_fraction) of total speaking time.
+
+    If `rep_labels` is provided (from saved Participant.side='rep'), those
+    speakers' durations are summed as the rep share. Otherwise we fall back
+    to the dominant-speaker heuristic (whoever talked the longest is the
+    rep). Same applies if the labels passed don't match any segment.
+    """
     if not segments:
         return 0.5, 0.5
 
@@ -619,11 +639,16 @@ def _compute_talk_ratios(segments: list[TranscriptSegment]) -> tuple[float, floa
     if total == 0.0:
         return 0.5, 0.5
 
-    sorted_speakers = sorted(speaker_durations.items(), key=lambda x: x[1], reverse=True)
-    rep_speaker = sorted_speakers[0][0]
-    rep_duration = speaker_durations[rep_speaker]
-    client_duration = total - rep_duration
+    matched_labels = (rep_labels or set()) & set(speaker_durations.keys())
+    if matched_labels:
+        rep_duration = sum(speaker_durations[label] for label in matched_labels)
+    else:
+        sorted_speakers = sorted(
+            speaker_durations.items(), key=lambda x: x[1], reverse=True
+        )
+        rep_duration = speaker_durations[sorted_speakers[0][0]]
 
+    client_duration = total - rep_duration
     return round(rep_duration / total, 4), round(client_duration / total, 4)
 
 

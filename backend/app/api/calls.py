@@ -19,11 +19,13 @@ from app.core.config import settings
 from app.core.db import get_session
 from app.core.errors import DomainError
 from app.llm.schemas.synthesis import sentiment_to_score
+from app.models.analysis import Analysis
 from app.models.call import Call
 from app.models.client import Client
 from app.models.participant import Participant
 from app.models.tag import CallTag, Tag
-from app.models.transcript import Transcript
+from app.models.transcript import Transcript, TranscriptSegment
+from app.services.pipeline import _compute_talk_ratios
 from app.schemas.call import (
     ActionItemOut,
     AnalysisOut,
@@ -584,6 +586,34 @@ async def replace_participants(
                 side=p.side,
             )
         )
+    await session.flush()
+
+    # Recompute talk_ratio against the new rep/client mapping. Pure arithmetic
+    # over the existing segments — no LLM/STT involved — so it's safe to run
+    # synchronously inside the request.
+    rep_labels = {
+        p.speaker_label for p in body.participants
+        if p.side == "rep" and p.speaker_label
+    }
+    transcript_row = await session.execute(
+        select(Transcript).where(Transcript.call_id == call_id)
+    )
+    transcript = transcript_row.scalar_one_or_none()
+    if transcript is not None:
+        seg_rows = await session.execute(
+            select(TranscriptSegment)
+            .where(TranscriptSegment.transcript_id == transcript.id)
+            .order_by(TranscriptSegment.idx)
+        )
+        segments = list(seg_rows.scalars().all())
+        rep_frac, client_frac = _compute_talk_ratios(segments, rep_labels)
+        analysis = await session.scalar(
+            select(Analysis).where(Analysis.call_id == call_id)
+        )
+        if analysis is not None:
+            analysis.talk_ratio_rep = rep_frac
+            analysis.talk_ratio_client = client_frac
+
     await session.commit()
 
     rows = await session.execute(

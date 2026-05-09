@@ -14,6 +14,7 @@ Esta carpeta documenta deuda técnica conocida del proyecto: bugs corregidos con
 - [08 — Persistencia de participants (resuelto, incluye migración)](./08-participants-persistence.md)
 - [10 — Auto-migrate al arrancar la API (resuelto)](./10-auto-migrate-on-bootstrap.md)
 - [11 — Tag taxonomy ahora viene de la BD (resuelto)](./11-tag-taxonomy-from-db.md)
+- [13 — Talk:listen ratio respeta Participant.side (resuelto)](./13-talk-ratio-uses-participants-side.md)
 
 ## Convenciones
 
