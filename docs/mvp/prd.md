@@ -71,18 +71,18 @@ file_scope:
 -->
 - **Description:** Stand up the runnable backend shell — FastAPI app, async SQLAlchemy session factory, Alembic config, Celery app + Redis broker, settings via `pydantic-settings`, Dockerfiles for `api` and `worker`, `docker-compose.yml` for `db` + `redis` + `api` + `worker`.
 - **Tasks:**
-  - [ ] 1.1 Create `backend/pyproject.toml` (uv or poetry — pick uv) with: `fastapi`, `uvicorn[standard]`, `sqlalchemy[asyncio]`, `asyncpg`, `alembic`, `celery[redis]`, `redis`, `pydantic-settings`, `python-multipart`, `openai`, `pytest`, `pytest-asyncio`, `httpx`, `aiosqlite` (test DB).
-  - [ ] 1.2 `backend/app/core/config.py` — `Settings(BaseSettings)` reading env (DB_URL, REDIS_URL, OPENAI_API_KEY, AUDIO_STORAGE_DIR, LLM_MODEL_* per stage, STT_MODEL).
-  - [ ] 1.3 `backend/app/core/db.py` — async `engine`, `async_session_maker`, `get_session` dependency.
-  - [ ] 1.4 `backend/app/main.py` — FastAPI app, CORS for `localhost:5173`, health endpoint `GET /health`.
-  - [ ] 1.5 `backend/app/celery_app.py` — Celery instance reading `REDIS_URL`, `task_serializer="json"`, autodiscovery of `app.tasks`.
-  - [ ] 1.6 `alembic/` initialised, `env.py` wired to async engine.
-  - [ ] 1.7 `docker/api.Dockerfile`, `docker/worker.Dockerfile`, root `docker-compose.yml` with named volume for `./storage/audio` and Postgres data.
+  - [x] 1.1 Create `backend/pyproject.toml` (uv or poetry — pick uv) with: `fastapi`, `uvicorn[standard]`, `sqlalchemy[asyncio]`, `asyncpg`, `alembic`, `celery[redis]`, `redis`, `pydantic-settings`, `python-multipart`, `openai`, `pytest`, `pytest-asyncio`, `httpx`, `aiosqlite` (test DB).
+  - [x] 1.2 `backend/app/core/config.py` — `Settings(BaseSettings)` reading env (DB_URL, REDIS_URL, OPENAI_API_KEY, AUDIO_STORAGE_DIR, LLM_MODEL_* per stage, STT_MODEL).
+  - [x] 1.3 `backend/app/core/db.py` — async `engine`, `async_session_maker`, `get_session` dependency.
+  - [x] 1.4 `backend/app/main.py` — FastAPI app, CORS for `localhost:5173`, health endpoint `GET /health`.
+  - [x] 1.5 `backend/app/celery_app.py` — Celery instance reading `REDIS_URL`, `task_serializer="json"`, autodiscovery of `app.tasks`.
+  - [x] 1.6 `alembic/` initialised, `env.py` wired to async engine.
+  - [x] 1.7 `docker/api.Dockerfile`, `docker/worker.Dockerfile`, root `docker-compose.yml` with named volume for `./storage/audio` and Postgres data.
 - **Definition of Done (DoD):**
-  - [ ] `docker compose up` brings up all 4 services without crashing.
-  - [ ] `curl localhost:8000/health` returns `{"status":"ok"}`.
-  - [ ] `celery -A app.celery_app inspect ping` responds from worker container.
-  - [ ] `alembic upgrade head` runs cleanly against the compose Postgres.
+  - [x] `docker compose up` brings up all 4 services without crashing.
+  - [x] `curl localhost:8000/health` returns `{"status":"ok"}`.
+  - [x] `celery -A app.celery_app inspect ping` responds from worker container.
+  - [x] `alembic upgrade head` runs cleanly against the compose Postgres.
 
 ---
 
@@ -96,18 +96,18 @@ file_scope:
 -->
 - **Description:** Replace the Babel-standalone setup with Vite + TS. Port every existing screen and component, preserving look & behavior. Replace `window.ALTUR` reads with a typed `api` client (mocked in this phase, real in Phase 4). Set up routing.
 - **Tasks:**
-  - [ ] 2.1 Initialize Vite TS project at `frontend/` (preserve existing `stylesheets/styles.css` and `pages/index.html` content; move to Vite layout).
-  - [ ] 2.2 Add deps: `react-router-dom@6`, `@tanstack/react-query@5`, `@tanstack/react-query-devtools`. Dev deps: `typescript`, `@types/react`, `vitest`, `@testing-library/react`, `jsdom`, `eslint`, `prettier`.
-  - [ ] 2.3 Convert all `.jsx` → `.tsx` (`screens/`, `components/`). Define shared types in `src/types.ts` mirroring backend Pydantic schemas (Call, CallDetail, TranscriptSegment, Client, Insight, DashboardKPIs, etc.).
-  - [ ] 2.4 Replace `useState`-based routing in `App` with React Router routes: `/`, `/calls`, `/calls/:id`, `/upload`, `/clients`, `/clients/:id`. Keep sidebar/topbar shell.
-  - [ ] 2.5 Create `src/api/client.ts` (typed fetch wrapper, base URL from `VITE_API_BASE_URL`) and `src/api/hooks.ts` (one TanStack Query hook per backend endpoint, returning fully typed data). Stub implementations return mocked data inline so the UI still renders.
-  - [ ] 2.6 Vite dev server proxies `/api` → `http://api:8000` in compose, `http://localhost:8000` in local dev.
-  - [ ] 2.7 `frontend/Dockerfile` (multi-stage: build → nginx static), wire into compose.
+  - [x] 2.1 Initialize Vite TS project at `frontend/` (preserve existing `stylesheets/styles.css` and `pages/index.html` content; move to Vite layout).
+  - [x] 2.2 Add deps: `react-router-dom@6`, `@tanstack/react-query@5`, `@tanstack/react-query-devtools`. Dev deps: `typescript`, `@types/react`, `vitest`, `@testing-library/react`, `jsdom`, `eslint`, `prettier`.
+  - [x] 2.3 Convert all `.jsx` → `.tsx` (`screens/`, `components/`). Define shared types in `src/types.ts` mirroring backend Pydantic schemas (Call, CallDetail, TranscriptSegment, Client, Insight, DashboardKPIs, etc.).
+  - [x] 2.4 Replace `useState`-based routing in `App` with React Router routes: `/`, `/calls`, `/calls/:id`, `/upload`, `/clients`, `/clients/:id`. Keep sidebar/topbar shell.
+  - [x] 2.5 Create `src/api/client.ts` (typed fetch wrapper, base URL from `VITE_API_BASE_URL`) and `src/api/hooks.ts` (one TanStack Query hook per backend endpoint, returning fully typed data). Stub implementations return mocked data inline so the UI still renders.
+  - [x] 2.6 Vite dev server proxies `/api` → `http://api:8000` in compose, `http://localhost:8000` in local dev.
+  - [x] 2.7 `frontend/Dockerfile` (multi-stage: build → nginx static), wire into compose.
 - **Definition of Done (DoD):**
-  - [ ] `npm run dev` serves the app and every existing screen renders identically to the pre-port version.
-  - [ ] `tsc --noEmit` passes with zero errors.
-  - [ ] React Router URLs change as the user navigates (no more `setRoute`).
-  - [ ] `docker compose up frontend` serves the built bundle.
+  - [x] `npm run dev` serves the app and every existing screen renders identically to the pre-port version.
+  - [x] `tsc --noEmit` passes with zero errors.
+  - [x] React Router URLs change as the user navigates (no more `setRoute`).
+  - [x] `docker compose up frontend` serves the built bundle.
 
 ---
 
