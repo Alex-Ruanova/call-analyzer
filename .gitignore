@@ -17,6 +17,7 @@ storage/audio/*.mp3
 
 # Secrets
 .env
+backend/.env
 
 # IDE
 .DS_Store

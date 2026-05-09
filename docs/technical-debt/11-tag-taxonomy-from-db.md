@@ -59,5 +59,5 @@ No requiere migración Alembic (es data, no schema). Para un install nuevo, el s
 
 ## Deuda residual
 
-- **Sin pantalla de tag management**: agregar/editar/borrar tags hoy requiere SQL o usar el `TagEditor` inline en una call. Mientras el catálogo se mantenga estable (~10 tags) eso basta. Si crece, conviene una pantalla `/tags` (tracked en `docs/ideas/improvements.md`).
+- **Sin pantalla de tag management**: agregar/editar/borrar tags hoy requiere SQL o usar el `TagEditor` inline en una call. Mientras el catálogo se mantenga estable (~10 tags) eso basta. Si crece, conviene una pantalla `/tags` (tracked en `docs/improvements.md` #1).
 - **El prompt se hincha si la BD tiene 100+ tags**: con la taxonomía actual de 8-15 tags el prompt es de ~200 tokens. A 100 tags serían ~1500 tokens — el LLM empieza a elegir peor. Mitigaciones futuras: filtrar por `usage_count` en la query de taxonomía y mandar solo los top-N más usados.

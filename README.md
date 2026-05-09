@@ -37,16 +37,16 @@ This spins up all services and seeds a sample call + user. **Migrations run auto
 ### 4. Process a Call
 
 ```bash
-# Upload audio (or use example from storage/audio)
-curl -F "audio=@path/to/call.wav" http://localhost:8000/api/calls
+# Upload audio (or use an example from storage/audio)
+curl -F "file=@path/to/call.wav" http://localhost:8000/api/calls
 
-# Returns: { "id": "uuid", "status": "pending" }
+# Returns: { "call_id": 42 }   (HTTP 202 Accepted)
 
 # Poll for completion
-curl http://localhost:8000/api/calls/{id}/status
+curl http://localhost:8000/api/calls/42/status
 
-# When status=done, fetch full analysis
-curl http://localhost:8000/api/calls/{id}
+# When status=done, fetch the full analysis
+curl http://localhost:8000/api/calls/42
 ```
 
 ---
@@ -104,7 +104,7 @@ The MVP follows a **status-driven** pattern:
 
 1. **Frontend** → `POST /api/calls` with audio.
 2. **API** creates a `Call` row (status=`pending`), enqueues Celery task, returns call ID.
-3. **Frontend** polls `GET /api/calls/{id}/status` every 2 seconds.
+3. **Frontend** polls `GET /api/calls/{id}/status` every 1.5 seconds.
 4. **Worker** processes: STT → Mood → Tagging → Insights → Synthesis. Logs cost to `Analysis.cost_usd_breakdown`. Updates `Call.status = "done"`.
 5. **Frontend** fetches full call data when status changes.
 
@@ -126,12 +126,16 @@ stt = DeepgramSTT(model="nova-2")
 
 ## What I'd Add With More Time
 
-1. **OAuth2 + JWT auth** — Replace API key with email/password + OIDC SSO (Google, Okta). Enable multi-tenancy with row-level security.
-2. **S3 + object storage** — Swap local disk for S3 with SSE-KMS encryption. Add 90-day retention + PII redaction.
-3. **STT vendor benchmarking** — Add Deepgram, AssemblyAI, Groq-whisper behind abstractions. Run side-by-side on real calls; pick winner by latency/cost/accuracy.
-4. **Real-time progress (WebSocket/SSE)** — Swap polling for Redis pub/sub. Push stage transitions to frontend in real-time.
-5. **Reasoning-model synthesis** — Use gpt-4-turbo with chain-of-thought for insights. Accept longer latency for higher quality.
-6. **Deployment (ECS/Fly.io)** — Package as Terraform + GitHub Actions. One-command deploy to Fly or ECS with managed Postgres/Redis.
+The full backlog (sized, prioritized) lives in [docs/improvements.md](docs/improvements.md) — both quick wins (≤2h each) and strategic items.
+
+Top 4 if I had ~2 more hours:
+
+1. **Configure `DAILY_BUDGET_USD`** before public deploy (5 min).
+2. **Replace hardcoded sentiment copy** in `DetailScreen` (30 min).
+3. **Cost breakdown by stage** in `DetailScreen` (20 min).
+4. **`POST /api/calls/{id}/reanalyze`** — re-run analysis without re-paying STT, the canonical tool for prompt iteration (30–45 min).
+
+Strategic items (auth, S3, semantic search with pgvector, real-time SSE, event-driven backbone, voice-print identification, PII hardening) are detailed in `docs/improvements.md`.
 
 ---
 
@@ -139,7 +143,8 @@ stt = DeepgramSTT(model="nova-2")
 
 - [docs/prompt-design.md](docs/prompt-design.md) — Tag taxonomy, per-stage prompts, evaluation strategy.
 - [docs/architecture-and-scale.md](docs/architecture-and-scale.md) — Happy path, scaling to 10k/day, PII handling, production evolution.
-- [docs/deployment.md](docs/deployment.md) — Deployment checklist, cost protection, Cloudflare + hosting options (private, for deployment only).
+- [docs/improvements.md](docs/improvements.md) — Forward-looking backlog (quick wins + strategic).
+- [docs/technical-debt/](docs/technical-debt/) — One entry per known gap or design decision worth flagging (sentiment numeric vs categorical, language detection, participants persistence, dashboard label honesty, etc.).
 
 ---
 
@@ -171,5 +176,5 @@ make psql
 
 - **No auth in MVP** — API key is optional; frontend embeds it. Budget cap + rate limiting provide cost protection; true multi-tenancy requires OAuth2 + row-level filters.
 - **Local audio storage** — Survives container restart but not cluster failover. Production needs S3.
-- **Polling, not WebSocket** — Frontend polls every 2s; latency feels like 1–2s. Real-time via Redis pub/sub + SSE is next.
+- **Polling, not WebSocket** — Frontend polls every 1.5s while a call is processing. Real-time via Redis pub/sub + SSE is next (see `docs/improvements.md`).
 - **Synchronous provider calls** — All STT/LLM calls block the worker. Async httpx client is in place; edge case of a stalled OpenAI request blocks 1/4 worker slots for up to 60s.
