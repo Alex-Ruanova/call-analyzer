@@ -23,10 +23,10 @@ cp .env.example .env
 ### 2. Run
 
 ```bash
-make up && make migrate && make seed
+make up && make seed
 ```
 
-This spins up all services, runs DB migrations, and seeds a sample call + user.
+This spins up all services and seeds a sample call + user. **Migrations run automatically** when the API container starts (it runs `alembic upgrade head` before launching uvicorn). If you ever need to run them manually, use `make migrate`.
 
 ### 3. Access
 

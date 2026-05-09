@@ -173,20 +173,6 @@ export function Sidebar({
           });
         })()}
       </nav>
-      <div className="sidebar__bottom">
-        <div className="avatar avatar--md">EM</div>
-        <div style={{ minWidth: 0, flex: 1 }}>
-          <div
-            style={{ fontSize: 12.5, fontWeight: 500, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}
-          >
-            Elena Marín
-          </div>
-          <div style={{ fontSize: 11, color: "var(--text-3)" }}>Sales Lead</div>
-        </div>
-        <button className="iconbtn" title="Settings">
-          <Icons.Settings size={14} />
-        </button>
-      </div>
     </aside>
   );
 }
