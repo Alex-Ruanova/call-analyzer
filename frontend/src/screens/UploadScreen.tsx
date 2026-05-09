@@ -134,13 +134,30 @@ export default function UploadScreen() {
         },
         onError: (err: unknown) => {
           setProcessing(false);
-          const e = err as { status?: number; code?: string; message?: string };
+          const e = err as {
+            status?: number;
+            code?: string;
+            message?: string;
+            details?: { title?: string; created_at?: string };
+          };
           if (e.status === 409 && e.code === "duplicate_call") {
-            const ok = window.confirm(
-              `${e.message ?? "This audio was already processed."}\n\n` +
-                "Do you want to reprocess it anyway? STT and LLM costs will be charged again."
+            const title = e.details?.title;
+            const when = e.details?.created_at
+              ? new Date(e.details.created_at).toLocaleDateString("en-US", {
+                  month: "long",
+                  day: "numeric",
+                  year: "numeric",
+                })
+              : null;
+            const lines = ["This recording has already been processed."];
+            if (title && when) lines.push(`Original: "${title}" — uploaded ${when}.`);
+            else if (title) lines.push(`Original: "${title}".`);
+            else if (when) lines.push(`Originally uploaded ${when}.`);
+            lines.push("");
+            lines.push(
+              "Reprocess anyway? This will create a new copy and charge transcription + analysis again."
             );
-            if (ok) submitUpload(true);
+            if (window.confirm(lines.join("\n"))) submitUpload(true);
           }
         },
       }

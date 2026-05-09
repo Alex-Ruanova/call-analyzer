@@ -6,6 +6,7 @@ export class ApiError extends Error {
     public readonly status: number,
     message: string,
     public readonly code?: string,
+    public readonly details?: unknown,
   ) {
     super(message);
     this.name = "ApiError";
@@ -27,6 +28,7 @@ export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> 
       res.status,
       (err?.message as string | undefined) ?? res.statusText,
       err?.code as string | undefined,
+      err?.details,
     );
   }
   if (res.status === 204 || res.headers.get("content-length") === "0") {
@@ -69,6 +71,7 @@ export function apiUpload<T>(
             xhr.status,
             (err?.message as string | undefined) ?? xhr.statusText,
             err?.code as string | undefined,
+            err?.details,
           ));
         } catch {
           reject(new ApiError(xhr.status, xhr.statusText));

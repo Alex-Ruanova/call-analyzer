@@ -251,8 +251,12 @@ async def upload_call(
             dest_path.unlink(missing_ok=True)
             raise DomainError(
                 code="duplicate_call",
-                message=f"Call already processed as id={existing.id}",
+                message="This recording has already been processed.",
                 status_code=409,
+                details={
+                    "title": existing.title,
+                    "created_at": existing.created_at.isoformat(),
+                },
             )
 
     if client_id is not None:

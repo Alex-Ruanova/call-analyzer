@@ -5,10 +5,17 @@ from pydantic import ValidationError
 
 
 class DomainError(Exception):
-    def __init__(self, code: str, message: str, status_code: int = 400) -> None:
+    def __init__(
+        self,
+        code: str,
+        message: str,
+        status_code: int = 400,
+        details: object | None = None,
+    ) -> None:
         self.code = code
         self.message = message
         self.status_code = status_code
+        self.details = details
         super().__init__(message)
 
 
@@ -17,7 +24,10 @@ def _error_body(code: str, message: str, details: object = None) -> dict[str, ob
 
 
 async def domain_error_handler(request: Request, exc: DomainError) -> JSONResponse:
-    return JSONResponse(status_code=exc.status_code, content=_error_body(exc.code, exc.message))
+    return JSONResponse(
+        status_code=exc.status_code,
+        content=_error_body(exc.code, exc.message, exc.details),
+    )
 
 
 async def request_validation_error_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
