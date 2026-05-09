@@ -196,6 +196,7 @@ async def upload_call(
     _budget: Annotated[None, Depends(check_budget)],
     client_id: int | None = Form(None),
     title: str | None = Form(None),
+    force: bool = Form(False),
 ) -> JSONResponse:
     ext = Path(file.filename or "").suffix.lower()
     if ext not in _ALLOWED_EXTENSIONS:
@@ -238,19 +239,21 @@ async def upload_call(
 
     content_sha256 = hasher.hexdigest()
 
-    # Dedup: same sha256 + done
-    existing = await session.scalar(
-        select(Call).where(
-            Call.content_sha256 == content_sha256, Call.status == "done"
+    # Dedup: same sha256 + done. Caller can opt out with force=true to
+    # explicitly reprocess (the frontend prompts the user when this happens).
+    if not force:
+        existing = await session.scalar(
+            select(Call).where(
+                Call.content_sha256 == content_sha256, Call.status == "done"
+            )
         )
-    )
-    if existing:
-        dest_path.unlink(missing_ok=True)
-        raise DomainError(
-            code="duplicate_call",
-            message=f"Call already processed as id={existing.id}",
-            status_code=409,
-        )
+        if existing:
+            dest_path.unlink(missing_ok=True)
+            raise DomainError(
+                code="duplicate_call",
+                message=f"Call already processed as id={existing.id}",
+                status_code=409,
+            )
 
     if client_id is not None:
         client = await session.get(Client, client_id)

@@ -109,8 +109,8 @@ export default function UploadScreen() {
   const ready = !!file && !!rawFile && !!client;
   const createCall = useCreateCall();
 
-  const handleAnalyze = () => {
-    if (!ready || !rawFile) return;
+  const submitUpload = (force: boolean) => {
+    if (!rawFile) return;
     setProcessing(true);
     setPct(0);
     setStep(0);
@@ -118,6 +118,7 @@ export default function UploadScreen() {
     const formData = new FormData();
     formData.append("file", rawFile);
     if (client) formData.append("client_id", String(client.id));
+    if (force) formData.append("force", "true");
 
     createCall.mutate(
       {
@@ -131,11 +132,24 @@ export default function UploadScreen() {
         onSuccess: (result) => {
           navigate("/calls/" + result.id);
         },
-        onError: () => {
+        onError: (err: unknown) => {
           setProcessing(false);
+          const e = err as { status?: number; code?: string; message?: string };
+          if (e.status === 409 && e.code === "duplicate_call") {
+            const ok = window.confirm(
+              `${e.message ?? "This audio was already processed."}\n\n` +
+                "Do you want to reprocess it anyway? STT and LLM costs will be charged again."
+            );
+            if (ok) submitUpload(true);
+          }
         },
       }
     );
+  };
+
+  const handleAnalyze = () => {
+    if (!ready) return;
+    submitUpload(false);
   };
 
   if (processing) {
