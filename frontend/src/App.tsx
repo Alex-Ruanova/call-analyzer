@@ -1,7 +1,9 @@
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { QueryClient, QueryClientProvider, QueryCache, MutationCache } from "@tanstack/react-query";
 import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
 import { useState, useEffect, useRef, createContext, useContext, useCallback } from "react";
+import { ToastProvider, useToast } from "./components/Toast";
+import ErrorBoundary from "./components/ErrorBoundary";
 import "./styles.css";
 import { RouterSidebar, Topbar } from "./components/components";
 import { TweaksPanel, TweakSection, TweakColor, TweakRadio, TweakToggle, useTweaks } from "./components/TweaksPanel";
@@ -30,7 +32,35 @@ export function useSetCrumbOverride(text: string | null) {
   }, [text, setOverride]);
 }
 
-const queryClient = new QueryClient();
+// ---- QueryClient wired to toast ----
+// Created inside a component that has toast context so onError can surface toasts.
+
+function ApiProviders({ children }: { children: React.ReactNode }) {
+  const { show } = useToast();
+  const showRef = useRef(show);
+  useEffect(() => { showRef.current = show; }, [show]);
+
+  const [queryClient] = useState(
+    () =>
+      new QueryClient({
+        queryCache: new QueryCache({
+          onError: (err) =>
+            showRef.current(err instanceof Error ? err.message : String(err), "error"),
+        }),
+        mutationCache: new MutationCache({
+          onError: (err) =>
+            showRef.current(err instanceof Error ? err.message : String(err), "error"),
+        }),
+      })
+  );
+
+  return (
+    <QueryClientProvider client={queryClient}>
+      {children}
+      <ReactQueryDevtools initialIsOpen={false} />
+    </QueryClientProvider>
+  );
+}
 
 const TWEAK_DEFAULTS = {
   accent: "#10b981",
@@ -184,11 +214,14 @@ function buildCrumbs(pathname: string, override: string | null = null): string[]
 
 export default function App() {
   return (
-    <QueryClientProvider client={queryClient}>
-      <BrowserRouter>
-        <AppShell />
-      </BrowserRouter>
-      <ReactQueryDevtools initialIsOpen={false} />
-    </QueryClientProvider>
+    <ErrorBoundary>
+      <ToastProvider>
+        <ApiProviders>
+          <BrowserRouter>
+            <AppShell />
+          </BrowserRouter>
+        </ApiProviders>
+      </ToastProvider>
+    </ErrorBoundary>
   );
 }

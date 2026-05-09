@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { useClients } from "../api/hooks";
+import { useClients, useCreateCall } from "../api/hooks";
 import { Icons } from "../components/components";
 import { NewClientModal } from "./ClientsScreen";
 import type { Client } from "../types";
@@ -25,6 +25,7 @@ export default function UploadScreen() {
 
   const [drag, setDrag] = useState(false);
   const [file, setFile] = useState<FileInfo | null>(null);
+  const [rawFile, setRawFile] = useState<File | null>(null);
   const [client, setClient] = useState<Client | null>(null);
   const [showClientPicker, setShowClientPicker] = useState(false);
   const [clientFilter, setClientFilter] = useState("");
@@ -62,6 +63,7 @@ export default function UploadScreen() {
 
   const accept = (f: File | null) => {
     if (!f) return;
+    setRawFile(f);
     setFile({
       name: f.name || "northwind-discovery-mar15.mp3",
       size: f.size ? `${(f.size / 1024 / 1024).toFixed(1)} MB` : "8.4 MB",
@@ -96,28 +98,36 @@ export default function UploadScreen() {
     setClientFilter("");
   };
 
-  const ready = !!file && !!client;
+  const ready = !!file && !!rawFile && !!client;
+  const createCall = useCreateCall();
 
   const handleAnalyze = () => {
-    if (!ready) return;
+    if (!ready || !rawFile) return;
     setProcessing(true);
     setPct(0);
     setStep(0);
 
-    const start = Date.now();
-    const total = 4200;
-    const steps = ["Decoding audio", "Transcribing speech", "Identifying participants", "Analyzing sentiment", "Extracting insights"];
+    const formData = new FormData();
+    formData.append("file", rawFile);
+    if (client) formData.append("client_id", String(client.id));
 
-    const i = setInterval(() => {
-      const elapsed = Date.now() - start;
-      const p = Math.min(100, (elapsed / total) * 100);
-      setPct(p);
-      setStep(Math.min(steps.length - 1, Math.floor((p / 100) * steps.length)));
-      if (p >= 100) {
-        clearInterval(i);
-        setTimeout(() => navigate("/calls/call-001"), 380);
+    createCall.mutate(
+      {
+        formData,
+        onProgress: (p) => {
+          setPct(p);
+          setStep(Math.min(4, Math.floor((p / 100) * 5)));
+        },
+      },
+      {
+        onSuccess: (result) => {
+          navigate("/calls/" + result.id);
+        },
+        onError: () => {
+          setProcessing(false);
+        },
       }
-    }, 60);
+    );
   };
 
   if (processing) {
@@ -195,7 +205,7 @@ export default function UploadScreen() {
             </div>
             <button
               className="btn btn--ghost btn--sm"
-              onClick={(e) => { e.stopPropagation(); setFile(null); }}
+              onClick={(e) => { e.stopPropagation(); setFile(null); setRawFile(null); }}
             >
               <Icons.X size={11} />
               Replace
@@ -316,17 +326,6 @@ export default function UploadScreen() {
           {file && !client && <span style={{ color: "var(--accent)" }}>Step 2 — assign a client to continue.</span>}
           {ready && "Ready to analyze."}
         </div>
-        {!file && (
-          <button
-            className="btn"
-            onClick={(e) => {
-              e.stopPropagation();
-              setFile({ name: "northwind-discovery-mar15.mp3", size: "8.4 MB" });
-            }}
-          >
-            Use sample
-          </button>
-        )}
         <button
           className="btn btn--primary"
           disabled={!ready}

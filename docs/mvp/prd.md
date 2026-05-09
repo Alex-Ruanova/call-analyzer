@@ -265,19 +265,19 @@ file_scope:
 -->
 - **Description:** Replace every stub in `src/api/hooks.ts` with real fetches. Wire the upload flow to poll status. Delete `scripts/data.js` (the static `ALTUR` mock).
 - **Tasks:**
-  - [ ] 6.1 Real hooks: `useCalls(filters)`, `useCall(id)`, `useCallStatus(id)` (refetch every 1.5s while status ∈ `pending|transcribing|analyzing`), `useClients`, `useClient(id)`, `useTags`, `useEmotions`, `useDashboard`, mutations: `useCreateCall`, `useCreateClient`, `useUpdateTags`, `useAssignClient`, `useDeleteCall`, `useBulkDeleteCalls`.
-  - [ ] 6.2 Upload screen: `useCreateCall` mutation using XHR-with-progress (not plain `fetch`) so the existing upload card can show a real progress bar (0–100%) during the network transfer for large files. On success, navigate to `/calls/:id` with `ProcessingScreen` reading real status.
-  - [ ] 6.3 Processing screen: replace fake `setInterval` with `useCallStatus`; map backend status → 5 visible UI steps (Decoding/Transcribing/Identifying/Analyzing/Extracting).
-  - [ ] 6.4 Detail screen: render real `segments` (from diarization), real `mood` per segment, real tags with `source` indicator (badge "manual" vs "AI"), real insights and action items. Add a small **cost footer** ("Analysis cost: $0.0123 · gpt-4o-mini") reading `cost_usd_total` and `llm_model_used` from `CallDetail`.
-  - [ ] 6.5 List screen: filters/sort/search go to backend (no client-side filtering of mock data).
-  - [ ] 6.6 Dashboard: every chart/widget reads from `useDashboard`.
-  - [ ] 6.7 Error UI: a shared `ErrorBoundary` + `useToast` for mutation failures with the backend error `message`.
-  - [ ] 6.8 Delete `frontend/scripts/data.js` and any remaining `window.ALTUR` references.
+  - [x] 6.1 Real hooks: `useCalls(filters)`, `useCall(id)`, `useCallStatus(id)` (refetch every 1.5s while status ∈ `pending|transcribing|analyzing`), `useClients`, `useClient(id)`, `useTags`, `useEmotions`, `useDashboard`, mutations: `useCreateCall`, `useCreateClient`, `useUpdateTags`, `useAssignClient`, `useDeleteCall`, `useBulkDeleteCalls`.
+  - [x] 6.2 Upload screen: `useCreateCall` mutation using XHR-with-progress (not plain `fetch`) so the existing upload card can show a real progress bar (0–100%) during the network transfer for large files. On success, navigate to `/calls/:id` with `ProcessingScreen` reading real status.
+  - [x] 6.3 Processing screen: replace fake `setInterval` with `useCallStatus`; map backend status → 5 visible UI steps (Decoding/Transcribing/Identifying/Analyzing/Extracting).
+  - [x] 6.4 Detail screen: render real `segments` (from diarization), real `mood` per segment, real tags with `source` indicator (badge "manual" vs "AI"), real insights and action items. Add a small **cost footer** ("Analysis cost: $0.0123 · gpt-4o-mini") reading `cost_usd_total` and `llm_model_used` from `CallDetail`.
+  - [x] 6.5 List screen: filters/sort/search go to backend (no client-side filtering of mock data).
+  - [x] 6.6 Dashboard: every chart/widget reads from `useDashboard`.
+  - [x] 6.7 Error UI: a shared `ErrorBoundary` + `useToast` for mutation failures with the backend error `message`.
+  - [x] 6.8 Delete `frontend/scripts/data.js` and any remaining `window.ALTUR` references.
 - **Definition of Done (DoD):**
-  - [ ] `grep -r "ALTUR" frontend/src` returns nothing.
+  - [x] `grep -r "ALTUR" frontend/src` returns nothing.
   - [ ] Uploading a real WAV produces a `done` call whose detail screen renders with real diarized transcript, real mood ribbon, real tags, real insights.
   - [ ] List filters (`assigned=unassigned`, `tag=Discovery`, `search=cobalt`) round-trip to the backend.
-  - [ ] Dashboard renders without any `ALTUR.DASHBOARD` reference.
+  - [x] Dashboard renders without any `ALTUR.DASHBOARD` reference.
 
 ---
 

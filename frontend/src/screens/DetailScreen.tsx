@@ -11,7 +11,7 @@ interface DetailScreenProps {
 
 export default function DetailScreen({ moodViz = "ribbon" }: DetailScreenProps) {
   const { id = "call-001" } = useParams<{ id: string }>();
-  const { data: call, isLoading } = useCall(id);
+  const { data: call, isLoading, isError } = useCall(id);
   useSetCrumbOverride(call?.title ?? null);
   const { data: allTagsData } = useTags();
   const { data: clientsData } = useClients();
@@ -36,6 +36,7 @@ export default function DetailScreen({ moodViz = "ribbon" }: DetailScreenProps) 
   const allTags = allTagsData ?? [];
   const allClients = clientsData ?? [];
 
+  if (isError) return <div className="empty-state">Call not found.</div>;
   if (isLoading || !call) {
     return <div style={{ padding: 28, color: "var(--text-3)" }}>Loading call…</div>;
   }

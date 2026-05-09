@@ -98,7 +98,7 @@ export interface Analysis {
   overall_sentiment: string;
   talk_ratio: TalkRatio;
   llm_model_used: string;
-  prompt_version: string;
+  prompt_version?: string;
   cost_usd_total: number;
   cost_usd_breakdown: Record<string, number>;
 }
