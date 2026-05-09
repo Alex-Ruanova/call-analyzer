@@ -15,6 +15,7 @@ Esta carpeta documenta deuda técnica conocida del proyecto: bugs corregidos con
 - [09 — Last call: formato relativo en client cards (resuelto)](./09-client-card-last-call-format.md)
 - [10 — Auto-migrate al arrancar la API (resuelto)](./10-auto-migrate-on-bootstrap.md)
 - [11 — Tag taxonomy ahora viene de la BD (resuelto)](./11-tag-taxonomy-from-db.md)
+- [12 — Tag `other` + formato de tiempos en UI (resuelto)](./12-other-tag-fallback-and-time-formatting.md)
 
 ## Convenciones
 

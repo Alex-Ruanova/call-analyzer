@@ -2,6 +2,7 @@ import { useState, useMemo, useRef, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useCalls, useClients, useTags, useUpdateTags, useAssignClient, useDeleteCall, useBulkDeleteCalls, useCreateClient } from "../api/hooks";
 import { Icons, SentimentBar, TagEditor, useOutsideClick } from "../components/components";
+import { formatDuration } from "../lib/format";
 import type { Tag, Client } from "../types";
 
 interface SortState {
@@ -194,11 +195,7 @@ export default function ListScreen() {
             {calls.map((c) => {
               const sentiment = c.sentiment_score;
               const isUnassigned = !c.client_id;
-              const durationMin = c.duration_seconds != null ? Math.floor(c.duration_seconds / 60) : 0;
-              const durationSec = c.duration_seconds != null ? c.duration_seconds % 60 : 0;
-              const durationStr = c.duration_seconds != null
-                ? `${durationMin}:${durationSec.toString().padStart(2, "0")}`
-                : "—";
+              const durationStr = formatDuration(c.duration_seconds);
               const dateStr = new Date(c.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric" });
 
               return (

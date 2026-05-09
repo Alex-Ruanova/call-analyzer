@@ -4,6 +4,7 @@ import { useCall, useCallStatus, useTags, useClients, useUpdateParticipants } fr
 import { useQueryClient } from "@tanstack/react-query";
 import { useSetCrumbOverride } from "../App";
 import { Icons, EmotionDot, TagEditor, ClientPicker, getEmotion } from "../components/components";
+import { formatDuration, formatTimestamp } from "../lib/format";
 import type { ActionItem, Participant, Tag, CallStatus } from "../types";
 
 interface DetailScreenProps {
@@ -215,11 +216,7 @@ export default function DetailScreen({ moodViz = "ribbon" }: DetailScreenProps) 
     return true;
   });
 
-  const durationMin = call.duration_seconds != null ? Math.floor(call.duration_seconds / 60) : 0;
-  const durationSec = call.duration_seconds != null ? call.duration_seconds % 60 : 0;
-  const durationStr = call.duration_seconds != null
-    ? `${durationMin}:${durationSec.toString().padStart(2, "0")}`
-    : "—";
+  const durationStr = formatDuration(call.duration_seconds);
 
   return (
     <div className="detail-grid" style={{ display: "grid", gridTemplateColumns: "minmax(380px, 530px) minmax(0, 1fr)", height: "100%", minHeight: 0 }}>
@@ -440,11 +437,9 @@ export default function DetailScreen({ moodViz = "ribbon" }: DetailScreenProps) 
 
 // ---- Helpers ----
 
-function formatTime(seconds: number): string {
-  const m = Math.floor(seconds / 60);
-  const s = seconds % 60;
-  return `${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
-}
+// Local alias kept for backwards compatibility with existing call sites in
+// this file; rounds via the shared lib helper to avoid float-noise leaks.
+const formatTime = formatTimestamp;
 
 function highlight(text: string, q: string): React.ReactNode {
   if (!q) return text;
@@ -756,11 +751,7 @@ function EmotionsTab({ call }: { call: NonNullable<ReturnType<typeof useCall>["d
   const total = Object.values(call.emotion_distribution).reduce((a, b) => a + b, 0) || 1;
   const overallSentiment = call.sentiment_score ?? 0;
 
-  const durationMin = call.duration_seconds != null ? Math.floor(call.duration_seconds / 60) : 0;
-  const durationSec = call.duration_seconds != null ? call.duration_seconds % 60 : 0;
-  const durationStr = call.duration_seconds != null
-    ? `${durationMin}:${durationSec.toString().padStart(2, "0")}`
-    : "—";
+  const durationStr = formatDuration(call.duration_seconds);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 22 }}>

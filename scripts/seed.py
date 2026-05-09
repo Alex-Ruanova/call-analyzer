@@ -55,6 +55,8 @@ TAGS_DATA = [
     {"name": "feature-request", "color": "#0ea5e9", "is_system": True},
     {"name": "onboarding", "color": "#6366f1", "is_system": True},
     {"name": "renewal", "color": "#6366f1", "is_system": True},
+    # Catch-all for calls the LLM cannot place into any of the above.
+    {"name": "other", "color": "#6b7280", "is_system": True},
 ]
 
 now = datetime.utcnow()

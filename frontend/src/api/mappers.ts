@@ -402,9 +402,12 @@ export function mapDashboard(
     },
     {
       label: "Avg sentiment",
-      value: raw.avg_sentiment.value,
+      value: raw.avg_sentiment.value.toFixed(2),
       delta: raw.avg_sentiment.delta,
-      delta_label: null,
+      delta_label:
+        raw.avg_sentiment.delta != null
+          ? `${raw.avg_sentiment.delta >= 0 ? "+" : ""}${raw.avg_sentiment.delta.toFixed(2)}`
+          : null,
       positive: (raw.avg_sentiment.delta ?? 0) >= 0,
       spark: [] as number[],
       compare_label: "vs prior 30 days",
@@ -423,11 +426,18 @@ export function mapDashboard(
       compare_label: "vs before 30 days ago",
     },
     {
+      // Fraction of total speaking time used by the rep (the dominant
+      // speaker by total duration). 0.50 = balanced; >0.60 = rep talks
+      // too much; <0.40 = customer dominates the call.
       label: "Talk:Listen ratio",
-      value: raw.talk_listen_ratio.value,
+      value: `${Math.round(raw.talk_listen_ratio.value * 100)}%`,
       delta: raw.talk_listen_ratio.delta,
-      delta_label: null,
-      positive: (raw.talk_listen_ratio.delta ?? 0) >= 0,
+      delta_label:
+        raw.talk_listen_ratio.delta != null
+          ? `${raw.talk_listen_ratio.delta >= 0 ? "+" : ""}${(raw.talk_listen_ratio.delta * 100).toFixed(1)}pp`
+          : null,
+      // Higher rep-talk time is generally NOT good in sales coaching.
+      positive: (raw.talk_listen_ratio.delta ?? 0) <= 0,
       spark: [] as number[],
       compare_label: "vs prior 30 days",
     },

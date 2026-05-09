@@ -2,6 +2,7 @@ import { useParams, useNavigate } from "react-router-dom";
 import { useClient } from "../api/hooks";
 import { useSetCrumbOverride } from "../App";
 import { Icons, SentimentBar } from "../components/components";
+import { formatDuration } from "../lib/format";
 import type { CallSummary } from "../types";
 
 interface ClientDetailScreenProps {
@@ -127,11 +128,7 @@ export default function ClientDetailScreen({ pinnedClients, onTogglePin }: Clien
               <tbody>
                 {recentCalls.map((rc) => {
                   const sentiment = rc.sentiment_score;
-                  const durationMin = rc.duration_seconds != null ? Math.floor(rc.duration_seconds / 60) : 0;
-                  const durationSec = rc.duration_seconds != null ? rc.duration_seconds % 60 : 0;
-                  const durationStr = rc.duration_seconds != null
-                    ? `${durationMin}:${durationSec.toString().padStart(2, "0")}`
-                    : "—";
+                  const durationStr = formatDuration(rc.duration_seconds);
                   return (
                     <tr key={rc.id} onClick={() => navigate(`/calls/${rc.id}`)}>
                       <td style={{ paddingLeft: 16 }}>
