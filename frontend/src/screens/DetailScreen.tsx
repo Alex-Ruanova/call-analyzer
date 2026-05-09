@@ -194,6 +194,9 @@ export default function DetailScreen({ moodViz = "ribbon" }: DetailScreenProps) 
   const currentTitle = title ?? call.title;
   const currentTags = tags ?? call.tags;
   const currentClient = clientName !== undefined ? clientName : call.client_name;
+  const currentClientOwner = currentClient
+    ? (allClients.find((c) => c.name === currentClient)?.owner ?? null)
+    : null;
   const currentActions = actions ?? call.action_items;
   const currentParticipants = participants ?? call.participants;
 
@@ -276,6 +279,15 @@ export default function DetailScreen({ moodViz = "ribbon" }: DetailScreenProps) 
             <span>{durationStr}</span>
             <span>·</span>
             <span>{formatLanguage(call.language)}</span>
+            {currentClientOwner && (
+              <>
+                <span>·</span>
+                <span title="Account owner for this client">
+                  <Icons.Users size={11} style={{ verticalAlign: "-2px", marginRight: 4 }} />
+                  Owner: {currentClientOwner}
+                </span>
+              </>
+            )}
             {call.analysis?.cost_usd_total != null && (
               <>
                 <span>·</span>
@@ -667,7 +679,17 @@ function InsightsTab({ call, jumpTo }: InsightsTabProps) {
     highlight: { icon: Icons.Bookmark, color: "#a78bfa", label: "Highlight" },
   };
 
-  const talkRatio = call.analysis?.talk_ratio ?? { rep: 50, client: 50 };
+  // Backend returns fractions 0..1; convert to percentages once and use the
+  // rounded value for display, raw value for the proportional bar widths.
+  const talkRatioFrac = call.analysis?.talk_ratio ?? { rep: 0.5, client: 0.5 };
+  const repPct = Math.round(talkRatioFrac.rep * 100);
+  const clientPct = Math.round(talkRatioFrac.client * 100);
+  const talkRatioHealth =
+    talkRatioFrac.rep > 0.7
+      ? { label: "Rep-dominated", color: "#f59e0b" }
+      : talkRatioFrac.rep < 0.3
+      ? { label: "Client-dominated", color: "#f59e0b" }
+      : { label: "Healthy", color: "var(--accent)" };
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
@@ -721,23 +743,23 @@ function InsightsTab({ call, jumpTo }: InsightsTabProps) {
         <div style={{ display: "flex", gap: 16, alignItems: "center", padding: "8px 0" }}>
           <div style={{ flex: 1 }}>
             <div style={{ display: "flex", height: 8, borderRadius: 4, overflow: "hidden", marginBottom: 8 }}>
-              <div style={{ width: `${talkRatio.rep}%`, background: "var(--accent)" }} title={`Rep: ${talkRatio.rep}%`} />
-              <div style={{ width: `${talkRatio.client}%`, background: "#22d3ee" }} title={`Client: ${talkRatio.client}%`} />
+              <div style={{ width: `${repPct}%`, background: "var(--accent)" }} title={`Rep: ${repPct}%`} />
+              <div style={{ width: `${clientPct}%`, background: "#22d3ee" }} title={`Client: ${clientPct}%`} />
             </div>
             <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11.5 }}>
               <span>
                 <span className="dot" style={{ background: "var(--accent)", marginRight: 6 }} />
-                Rep · {talkRatio.rep}%
+                Rep · {repPct}%
               </span>
               <span>
                 <span className="dot" style={{ background: "#22d3ee", marginRight: 6 }} />
-                Client · {talkRatio.client}%
+                Client · {clientPct}%
               </span>
             </div>
           </div>
           <div style={{ padding: "10px 14px", background: "var(--bg-2)", border: "1px solid var(--border)", borderRadius: 8, textAlign: "center" }}>
             <div style={{ fontSize: 10, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: "0.08em" }}>Health</div>
-            <div style={{ fontSize: 14, fontWeight: 600, color: "var(--accent)", marginTop: 2 }}>Healthy</div>
+            <div style={{ fontSize: 14, fontWeight: 600, color: talkRatioHealth.color, marginTop: 2 }}>{talkRatioHealth.label}</div>
           </div>
         </div>
       </Section>

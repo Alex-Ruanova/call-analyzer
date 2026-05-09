@@ -401,12 +401,15 @@ export function mapDashboard(
       compare_label: "vs last week",
     },
     {
-      label: "Avg sentiment",
-      value: raw.avg_sentiment.value.toFixed(2),
+      // Backend returns the fraction of `done` calls labelled `positive` over
+      // the last 30 days. The previous label "Avg sentiment" was misleading
+      // because the math is a positivity rate, not an average of scores.
+      label: "Positive rate",
+      value: `${Math.round(raw.avg_sentiment.value * 100)}%`,
       delta: raw.avg_sentiment.delta,
       delta_label:
         raw.avg_sentiment.delta != null
-          ? `${raw.avg_sentiment.delta >= 0 ? "+" : ""}${raw.avg_sentiment.delta.toFixed(2)}`
+          ? `${raw.avg_sentiment.delta >= 0 ? "+" : ""}${(raw.avg_sentiment.delta * 100).toFixed(1)}pp`
           : null,
       positive: (raw.avg_sentiment.delta ?? 0) >= 0,
       spark: [] as number[],
