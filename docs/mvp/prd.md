@@ -124,7 +124,7 @@ file_scope:
 -->
 - **Description:** Define the SQLAlchemy models, the Pydantic schemas (request/response + LLM structured-output schemas), and the `STTProvider` / `LLMProvider` Protocols with concrete OpenAI implementations.
 - **Tasks:**
-  - [ ] 3.1 SQLAlchemy models in `app/models/`:
+  - [x] 3.1 SQLAlchemy models in `app/models/`:
     - `Client(id, name, industry, owner, created_at)`
     - `Call(id, client_id, title, filename, original_filename, content_type, size_bytes, duration_seconds, status, error_message, language, created_at, updated_at)` — `status` enum: `pending|transcribing|analyzing|done|failed`.
     - `Transcript(id, call_id, language, raw_payload_json, created_at)`
@@ -133,17 +133,17 @@ file_scope:
     - `Tag(id, name, color, is_system)` + `CallTag(call_id, tag_id, source)` where `source` = `llm|user`.
     - `Insight(id, call_id, kind, text, segment_idx, weight)` — `kind` ∈ `pain-point|objection|buying-signal|feature-req|competitor|pricing|next-step|quote|risk|highlight`.
     - `ActionItem(id, call_id, text, owner, due_date, done)`.
-  - [ ] 3.2 Alembic migration covering all of the above.
-  - [ ] 3.3 Pydantic v2 schemas in `app/schemas/`: `CallCreate`, `CallSummary` (list-row), `CallDetail` (full), `TranscriptSegmentOut`, `ClientCreate`, `ClientOut`, `TagOut`, `TagOverrideRequest`, `DashboardOut`, `InsightOut`, `ActionItemOut`. All `from_attributes=True`.
-  - [ ] 3.4 LLM structured-output schemas (also Pydantic) in `app/llm/schemas/`: `MoodLabels`, `TagSuggestion`, `InsightExtraction`, `Synthesis`. Each has a docstring + field descriptions used to feed `json_schema` to OpenAI.
-  - [ ] 3.5 Provider Protocols in `app/providers/`:
+  - [x] 3.2 Alembic migration covering all of the above.
+  - [x] 3.3 Pydantic v2 schemas in `app/schemas/`: `CallCreate`, `CallSummary` (list-row), `CallDetail` (full), `TranscriptSegmentOut`, `ClientCreate`, `ClientOut`, `TagOut`, `TagOverrideRequest`, `DashboardOut`, `InsightOut`, `ActionItemOut`. All `from_attributes=True`.
+  - [x] 3.4 LLM structured-output schemas (also Pydantic) in `app/llm/schemas/`: `MoodLabels`, `TagSuggestion`, `InsightExtraction`, `Synthesis`. Each has a docstring + field descriptions used to feed `json_schema` to OpenAI.
+  - [x] 3.5 Provider Protocols in `app/providers/`:
     - `STTProvider(Protocol)` with `async def transcribe(audio_path: Path, language: str | None) -> DiarizedTranscript`.
     - `LLMProvider(Protocol)` with `async def complete_structured(prompt: str, schema: type[BaseModel], model: str) -> BaseModel`.
-  - [ ] 3.6 Concrete impls: `OpenAISTT(STTProvider)` calling `gpt-4o-transcribe-diarize` with `diarized_json`; `OpenAILLM(LLMProvider)` using the latest `openai` SDK and `response_format={"type":"json_schema",...}`.
-  - [ ] 3.7 Provider DI wiring: FastAPI `Depends` factories returning configured singletons; same factories importable by Celery tasks.
+  - [x] 3.6 Concrete impls: `OpenAISTT(STTProvider)` calling `gpt-4o-transcribe-diarize` with `diarized_json`; `OpenAILLM(LLMProvider)` using the latest `openai` SDK and `response_format={"type":"json_schema",...}`.
+  - [x] 3.7 Provider DI wiring: FastAPI `Depends` factories returning configured singletons; same factories importable by Celery tasks.
 - **Definition of Done (DoD):**
   - [ ] `alembic upgrade head` creates every table; `alembic downgrade base` reverses cleanly.
-  - [ ] `OpenAISTT` and `OpenAILLM` can be instantiated and have one passing unit test each using a `FakeOpenAIClient` (no network).
+  - [x] `OpenAISTT` and `OpenAILLM` can be instantiated and have one passing unit test each using a `FakeOpenAIClient` (no network).
   - [ ] `mypy --strict app/providers app/schemas` passes (or `pyright` equivalent).
 
 ---
