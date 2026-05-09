@@ -16,7 +16,7 @@ class CallUpdate(BaseModel):
 
 
 class TagOverrideRequest(BaseModel):
-    tag_ids: list[int]
+    tag_names: list[str]
 
 
 class ParticipantIn(BaseModel):

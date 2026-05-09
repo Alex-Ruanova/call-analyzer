@@ -118,15 +118,15 @@ async def test_tag_override(client: AsyncClient) -> None:
     assert tags_resp.status_code == 200
 
     if tags_resp.json():
-        tag_id = tags_resp.json()[0]["id"]
-        patch_resp = await client.patch(f"/api/calls/{call_id}/tags", json={"tag_ids": [tag_id]})
+        tag_name = tags_resp.json()[0]["name"]
+        patch_resp = await client.patch(f"/api/calls/{call_id}/tags", json={"tag_names": [tag_name]})
         assert patch_resp.status_code == 200
         data = patch_resp.json()
         assert len(data["tags"]) == 1
         assert data["tags"][0]["source"] == "user"
     else:
         # No tags in DB — test empty override
-        patch_resp = await client.patch(f"/api/calls/{call_id}/tags", json={"tag_ids": []})
+        patch_resp = await client.patch(f"/api/calls/{call_id}/tags", json={"tag_names": []})
         assert patch_resp.status_code == 200
         assert patch_resp.json()["tags"] == []
 
@@ -204,7 +204,7 @@ async def test_tag_override_replaces_llm_tags(client: AsyncClient, db_session) -
 
     # Override with user tag (different from the LLM one)
     patch_resp = await client.patch(
-        f"/api/calls/{call_id}/tags", json={"tag_ids": [user_tag.id]}
+        f"/api/calls/{call_id}/tags", json={"tag_names": [user_tag.name]}
     )
     assert patch_resp.status_code == 200
 

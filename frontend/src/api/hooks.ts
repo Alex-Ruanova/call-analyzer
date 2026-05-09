@@ -149,10 +149,10 @@ export function useCreateClient() {
 export function useUpdateTags() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (args: { callId: string; tagIds: string[] }) =>
+    mutationFn: (args: { callId: string; tagNames: string[] }) =>
       apiFetch("/api/calls/" + args.callId + "/tags", {
         method: "PATCH",
-        body: JSON.stringify({ tag_ids: args.tagIds.map(Number) }),
+        body: JSON.stringify({ tag_names: args.tagNames }),
       }),
     onSuccess: (_data, vars) => {
       void qc.invalidateQueries({ queryKey: ["call", vars.callId] });

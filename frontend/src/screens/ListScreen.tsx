@@ -69,7 +69,7 @@ export default function ListScreen() {
   }, [callsData, sort]);
 
   const handleUpdateTags = (callId: string, nextTags: Tag[]) => {
-    updateTagsMutation.mutate({ callId, tagIds: nextTags.map((t) => t.id) });
+    updateTagsMutation.mutate({ callId, tagNames: nextTags.map((t) => t.name) });
   };
 
   const handleAssignClient = (callId: string, clientId: string) => {

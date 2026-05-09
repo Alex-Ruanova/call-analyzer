@@ -501,23 +501,36 @@ async def override_call_tags(
             status_code=404,
         )
 
-    # Validate all tag IDs exist
-    if body.tag_ids:
-        tags_result = await session.execute(
-            select(Tag).where(Tag.id.in_(body.tag_ids))
+    # Resolve names → tag rows, creating any that don't exist yet (user-created
+    # tags from the inline TagEditor have synthetic frontend IDs and only the
+    # name is meaningful at this layer).
+    requested_names = [n.strip() for n in body.tag_names if n and n.strip()]
+    deduped_names: list[str] = []
+    seen: set[str] = set()
+    for n in requested_names:
+        if n not in seen:
+            seen.add(n)
+            deduped_names.append(n)
+
+    tag_id_by_name: dict[str, int] = {}
+    if deduped_names:
+        existing_rows = await session.execute(
+            select(Tag).where(Tag.name.in_(deduped_names))
         )
-        found_tags = tags_result.scalars().all()
-        if len(found_tags) != len(body.tag_ids):
-            raise DomainError(
-                code="tag_not_found",
-                message="One or more tag IDs not found",
-                status_code=404,
-            )
+        for tag in existing_rows.scalars().all():
+            tag_id_by_name[tag.name] = tag.id
+
+        for name in deduped_names:
+            if name not in tag_id_by_name:
+                new_tag = Tag(name=name, is_system=False)
+                session.add(new_tag)
+                await session.flush()
+                tag_id_by_name[name] = new_tag.id
 
     # Full replace
     await session.execute(delete(CallTag).where(CallTag.call_id == call_id))
-    for tag_id in body.tag_ids:
-        session.add(CallTag(call_id=call_id, tag_id=tag_id, source="user"))
+    for name in deduped_names:
+        session.add(CallTag(call_id=call_id, tag_id=tag_id_by_name[name], source="user"))
 
     await session.commit()
 
