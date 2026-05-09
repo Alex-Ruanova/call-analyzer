@@ -1,6 +1,16 @@
 # Phase 3 Technical Specification — Domain Models, Schemas, and Provider Abstractions
 
-## Goal
+## Current Status
+
+**All tasks are implemented (`[x]`).** One DoD item remains open:
+
+> `alembic upgrade head` creates every table; `alembic downgrade base` reverses cleanly.
+
+The agent's primary task is to run this verification against the compose `db` service and mark the DoD `[x]`. The rest of this spec documents the completed implementation for architect review.
+
+---
+
+## Goal (original)
 
 Define every SQLAlchemy ORM model, Pydantic v2 request/response schema, LLM structured-output schema,
 and provider Protocol/implementation needed by Phases 4 and 5. This phase creates the type backbone
@@ -612,14 +622,19 @@ Generate with `alembic revision --autogenerate -m "initial_schema"`. Review to c
 - All indexes present
 - `downgrade()` drops tables in reverse dependency order
 
-## Implementation Steps
+## Implementation Steps (Remaining — Migration Verification)
 
-1. Create `app/models/` — all model files + `__init__.py` that imports every model class.
-2. Create `app/llm/schemas/` — four structured-output schema files.
-3. Create `app/schemas/` — all request/response schema files.
-4. Create `app/providers/` — `base.py`, `openai_stt.py`, `openai_llm.py`, `dependencies.py`.
-5. Generate + review Alembic migration.
-6. Write provider unit tests.
+All code is done. The only remaining step is migration verification:
+
+1. Start the compose `db` service if not already running:
+   ```bash
+   docker compose up -d db
+   ```
+2. Run `alembic upgrade head` from `backend/` with the compose DB URL.
+3. Verify all 9 expected tables exist (`clients`, `calls`, `tags`, `call_tags`, `transcripts`, `transcript_segments`, `analyses`, `insights`, `action_items`).
+4. Run `alembic downgrade base` — confirm clean teardown.
+5. Re-run `alembic upgrade head` to confirm idempotency.
+6. Mark the DoD item `[x]` in `docs/mvp/prd.md`.
 
 ## Testing Plan
 

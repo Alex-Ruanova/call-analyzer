@@ -3,10 +3,8 @@ from pathlib import Path
 import openai
 
 from app.core.errors import DomainError
-from app.providers.base import DiarizedSegment, DiarizedTranscript
+from app.providers.base import DiarizedSegment, DiarizedTranscript, LLMUsage, STTResult
 
-# Cost rate exposed for Phase 4 to use when recording STT cost.
-# Phase 4: cost_usd = (duration_seconds / 60) * STT_COST_PER_MINUTE[model]
 STT_COST_PER_MINUTE: dict[str, float] = {
     "gpt-4o-transcribe-diarize": 0.006,
 }
@@ -19,7 +17,7 @@ class OpenAISTT:
 
     async def transcribe(
         self, audio_path: Path, language: str | None = None
-    ) -> DiarizedTranscript:
+    ) -> STTResult:
         with audio_path.open("rb") as f:
             response = await self._client.audio.transcriptions.create(  # type: ignore[call-overload]
                 model=self._model,
@@ -47,8 +45,21 @@ class OpenAISTT:
             for seg in raw_segments
         ]
 
-        return DiarizedTranscript(
+        raw_duration = raw.get("duration")
+        duration_seconds: float | None = float(raw_duration) if isinstance(raw_duration, (int, float)) else None
+        cost_per_minute = STT_COST_PER_MINUTE.get(self._model, 0.0)
+        cost_usd = ((duration_seconds or 0.0) / 60.0) * cost_per_minute
+
+        transcript = DiarizedTranscript(
             segments=segments,
             language=getattr(response, "language", None),
             raw_payload=raw,
+            duration_seconds=duration_seconds,
         )
+        usage = LLMUsage(
+            prompt_tokens=0,
+            completion_tokens=0,
+            model=self._model,
+            cost_usd=cost_usd,
+        )
+        return STTResult(transcript=transcript, usage=usage)

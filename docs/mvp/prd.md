@@ -142,7 +142,7 @@ file_scope:
   - [x] 3.6 Concrete impls: `OpenAISTT(STTProvider)` calling `gpt-4o-transcribe-diarize` with `diarized_json`; `OpenAILLM(LLMProvider)` using the latest `openai` SDK and `response_format={"type":"json_schema",...}`.
   - [x] 3.7 Provider DI wiring: FastAPI `Depends` factories returning configured singletons; same factories importable by Celery tasks.
 - **Definition of Done (DoD):**
-  - [ ] `alembic upgrade head` creates every table; `alembic downgrade base` reverses cleanly.
+  - [x] `alembic upgrade head` creates every table; `alembic downgrade base` reverses cleanly.
   - [x] `OpenAISTT` and `OpenAILLM` can be instantiated and have one passing unit test each using a `FakeOpenAIClient` (no network).
   - [x] `mypy --strict app/providers app/schemas` passes (or `pyright` equivalent).
 

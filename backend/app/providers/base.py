@@ -20,6 +20,7 @@ class DiarizedTranscript:
     segments: list[DiarizedSegment]
     language: str | None
     raw_payload: dict[str, object]
+    duration_seconds: float | None = None
 
 
 @dataclass
@@ -36,11 +37,17 @@ class LLMResult:
     usage: LLMUsage
 
 
+@dataclass
+class STTResult:
+    transcript: DiarizedTranscript
+    usage: LLMUsage
+
+
 @runtime_checkable
 class STTProvider(Protocol):
     async def transcribe(
         self, audio_path: Path, language: str | None = None
-    ) -> DiarizedTranscript: ...
+    ) -> STTResult: ...
 
 
 @runtime_checkable
