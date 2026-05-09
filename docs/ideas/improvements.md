@@ -69,13 +69,25 @@ Cada entrada incluye: justificación, esfuerzo estimado, y dependencias. Esfuerz
 
 ## Procesamiento
 
-### 7. Reanalizar una llamada existente
+### 7. Reanalizar una llamada existente (in-place, sin re-STT)
 
-**Por qué**: cuando cambias el prompt de synthesis, el cost breakdown, o quieres aplicar `language detection` a llamadas pre-fix, hoy hay que reprocesar desde cero (re-cobra STT). Un endpoint `POST /api/calls/{id}/reanalyze` que solo corre desde `tag_stage` o `synthesis_stage` (sin re-STT) sería mucho más barato.
+**Por qué**: cuando cambias el prompt de synthesis, el cost breakdown, o quieres aplicar `language detection` a llamadas pre-fix, hoy las opciones son:
 
-**Cómo**: extraer las stages del Celery task para que se invoquen individualmente. Endpoint dispara task con un parámetro `from_stage`.
+- **Reupload con `force=true`** (commit `64c50be`): cada reanálisis crea **una fila nueva** en `calls` (id distinto), un transcript nuevo, un analysis nuevo, otro archivo de audio en disco, y vuelve a pagar STT. Si reprocesas el mismo audio 4 veces tienes 4 filas indistinguibles en la lista, 4× el costo de STT, y 4 archivos `.wav` físicos duplicados. **Es el patrón equivocado para iteración de prompts** — está pensado para "el usuario subió el archivo equivocado y lo quiere subir limpio".
 
-**Esfuerzo**: 1 h.
+- **Endpoint dedicado `POST /api/calls/{id}/reanalyze`** (esto): reusa el transcript+segments existentes, solo corre `tag_stage` + `analyze_stage` con el prompt nuevo. **Sobrescribe** el `Analysis` y los `CallTag(source='llm')` del mismo call. Mismo ID, sin duplicados, paga solo el LLM (centavos).
+
+**Cómo**:
+1. Endpoint `POST /api/calls/{id}/reanalyze` valida que `status='done'` y que existe transcript.
+2. Encola un Celery task con un parámetro `from_stage='analyze'` (o configurable).
+3. El task borra `Analysis` previo + `CallTag` con `source='llm'` y vuelve a correr `analyze_stage` y `tag_stage` reusando el `transcript_id`.
+4. Frontend: botón "Re-run analysis" en `DetailScreen` (icono refresh) que dispara la mutation y pollea status hasta `done`.
+
+**Esfuerzo**: 30–45 min.
+
+**Dependencia**: ninguna. Es la opción correcta para el workflow de "cambié el prompt, quiero ver el resultado nuevo en las llamadas existentes". También resuelve el problema de las llamadas legacy (`prueba`, `PruebaMultiple`) cuyo recap sigue en inglés porque fueron procesadas con `PROMPT_VERSION='v1'` antes del fix multilingüe.
+
+**Trade-off vs reupload-force**: ambos coexisten porque sirven a casos distintos. Hoy solo está el primero; falta el segundo, que es el de mayor uso en práctica.
 
 ### 8. Score continuo de sentiment (-1.0 a +1.0)
 
