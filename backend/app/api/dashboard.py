@@ -41,6 +41,8 @@ async def get_dashboard(
     calls_this_week_delta = float(calls_this_week_val - calls_prior_week_val)
 
     # --- avg_sentiment (fraction positive in last 30d) ---
+    # Quality metric — soft-deleted calls are excluded so the user can "remove
+    # an outlier" from this view. Cost / volume queries (below) keep them.
     sentiment_row = await session.execute(
         text(
             "SELECT "
@@ -48,7 +50,8 @@ async def get_dashboard(
             "  COUNT(*) AS total "
             "FROM calls c "
             "JOIN analyses a ON a.call_id = c.id "
-            "WHERE c.status = 'done' AND c.created_at >= now() - INTERVAL '30 days'"
+            "WHERE c.status = 'done' AND c.deleted_at IS NULL "
+            "AND c.created_at >= now() - INTERVAL '30 days'"
         )
     )
     sent = sentiment_row.fetchone()
@@ -63,7 +66,7 @@ async def get_dashboard(
             "  COUNT(*) AS total "
             "FROM calls c "
             "JOIN analyses a ON a.call_id = c.id "
-            "WHERE c.status = 'done' "
+            "WHERE c.status = 'done' AND c.deleted_at IS NULL "
             "AND c.created_at >= now() - INTERVAL '60 days' "
             "AND c.created_at < now() - INTERVAL '30 days'"
         )
@@ -82,7 +85,8 @@ async def get_dashboard(
             "SELECT AVG(CAST(a.talk_ratio_rep AS FLOAT)) "
             "FROM calls c "
             "JOIN analyses a ON a.call_id = c.id "
-            "WHERE c.status = 'done' AND c.created_at >= now() - INTERVAL '30 days'"
+            "WHERE c.status = 'done' AND c.deleted_at IS NULL "
+            "AND c.created_at >= now() - INTERVAL '30 days'"
         )
     )
     tlr_val = tlr_row.scalar()
@@ -93,7 +97,7 @@ async def get_dashboard(
             "SELECT AVG(CAST(a.talk_ratio_rep AS FLOAT)) "
             "FROM calls c "
             "JOIN analyses a ON a.call_id = c.id "
-            "WHERE c.status = 'done' "
+            "WHERE c.status = 'done' AND c.deleted_at IS NULL "
             "AND c.created_at >= now() - INTERVAL '60 days' "
             "AND c.created_at < now() - INTERVAL '30 days'"
         )
@@ -128,7 +132,7 @@ async def get_dashboard(
             "  COUNT(*) FILTER (WHERE a.overall_sentiment = 'negative') AS negative "
             "FROM calls c "
             "JOIN analyses a ON a.call_id = c.id "
-            "WHERE c.status = 'done' "
+            "WHERE c.status = 'done' AND c.deleted_at IS NULL "
             "AND c.created_at >= date_trunc('week', now()) - INTERVAL '11 weeks' "
             "GROUP BY week "
             "ORDER BY week ASC"
@@ -189,7 +193,9 @@ async def get_dashboard(
 
     # --- pipeline (by status) ---
     pipeline_rows = await session.execute(
-        select(Call.status, func.count(Call.id).label("cnt")).group_by(Call.status)
+        select(Call.status, func.count(Call.id).label("cnt"))
+        .where(Call.deleted_at.is_(None))
+        .group_by(Call.status)
     )
     pipeline = [
         PipelineStage(stage=row[0], count=row[1])
@@ -199,10 +205,10 @@ async def get_dashboard(
     # --- top_pain_points ---
     pain_rows = await session.execute(
         text(
-            "SELECT text, COUNT(*) AS cnt, SUM(weight) AS total_weight "
-            "FROM insights "
-            "WHERE kind = 'pain-point' "
-            "GROUP BY text "
+            "SELECT i.text, COUNT(*) AS cnt, SUM(i.weight) AS total_weight "
+            "FROM insights i JOIN calls c ON c.id = i.call_id "
+            "WHERE i.kind = 'pain-point' AND c.deleted_at IS NULL "
+            "GROUP BY i.text "
             "ORDER BY total_weight DESC "
             "LIMIT 10"
         )

@@ -13,7 +13,7 @@ from app.models.call import Call
 from app.models.client import Client
 from app.models.tag import CallTag, Tag
 from app.schemas.call import CallSummary, TagOut
-from app.schemas.client import ClientCreate, ClientDetail, ClientOut
+from app.schemas.client import ClientCreate, ClientDetail, ClientOut, ClientUpdate
 
 router = APIRouter()
 
@@ -24,7 +24,7 @@ async def _build_client_out(session: AsyncSession, client: Client) -> ClientOut:
         select(
             func.count(Call.id).label("calls"),
             func.max(Call.created_at).label("last_call"),
-        ).where(Call.client_id == client.id)
+        ).where(Call.client_id == client.id, Call.deleted_at.is_(None))
     )
     agg = row.fetchone()
 
@@ -32,7 +32,11 @@ async def _build_client_out(session: AsyncSession, client: Client) -> ClientOut:
     sent_row = await session.execute(
         select(Analysis.overall_sentiment, func.count(Analysis.id).label("cnt"))
         .join(Call, Call.id == Analysis.call_id)
-        .where(Call.client_id == client.id, Call.status == "done")
+        .where(
+            Call.client_id == client.id,
+            Call.status == "done",
+            Call.deleted_at.is_(None),
+        )
         .group_by(Analysis.overall_sentiment)
         .order_by(func.count(Analysis.id).desc())
         .limit(1)
@@ -148,6 +152,36 @@ async def create_client(
     return await _build_client_out(session, client)
 
 
+@router.patch(
+    "/clients/{client_id}",
+    summary="Update client (industry / owner)",
+    response_model=ClientOut,
+    responses={404: {"description": "Not found"}},
+)
+async def update_client(
+    client_id: int,
+    body: ClientUpdate,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> ClientOut:
+    client = await session.get(Client, client_id)
+    if not client:
+        raise DomainError(
+            code="client_not_found",
+            message=f"Client {client_id} not found",
+            status_code=404,
+        )
+
+    # Apply only fields the caller sent — `exclude_unset` lets us tell
+    # "owner omitted" apart from "owner: null" (explicit clear).
+    updates = body.model_dump(exclude_unset=True)
+    for field, value in updates.items():
+        normalized = value.strip() if isinstance(value, str) else value
+        setattr(client, field, normalized or None)
+    await session.commit()
+    await session.refresh(client)
+    return await _build_client_out(session, client)
+
+
 @router.get(
     "/clients/{client_id}",
     summary="Get client detail",
@@ -171,7 +205,7 @@ async def get_client(
     # Recent calls
     recent_result = await session.execute(
         select(Call)
-        .where(Call.client_id == client_id)
+        .where(Call.client_id == client_id, Call.deleted_at.is_(None))
         .order_by(Call.created_at.desc())
         .limit(10)
     )

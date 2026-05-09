@@ -139,7 +139,13 @@ Implementation:
 4. Frontend: a "Re-run analysis" button (refresh icon) on `DetailScreen`
    that fires the mutation and polls status until `done`.
 
-**Effort:** 30–45 min. **Dependencies:** none.
+**Effort:** 30–45 min. **Dependencies:** none, *as long as you only re-run
+LLM stages*. The audio file on disk is currently deleted right after
+`status='done'` (technical-debt #14) — so this endpoint can ONLY rewind
+to `analyze_stage` / `tag_stage`, never to `transcribe_stage`. If a future
+need is to redo STT (e.g. swap STT provider), the right move is to
+introduce a TTL on the audio (e.g. keep 30 days then unlink) instead of
+the current immediate delete.
 
 This is the right tool for "I changed a prompt, I want the existing calls
 to reflect it". It also fixes the legacy calls (`prueba`, `PruebaMultiple`)
@@ -255,6 +261,34 @@ OAuth2 / OIDC (Auth0, Keycloak, Supabase Auth), `User` / `Org` tables,
 row-level filters on every list/detail endpoint (a user only sees their
 own org's calls), admin role that can see everyone's calls inside the
 same org. `Call.owner` becomes a real foreign key to `User`.
+
+#### Multiple owners per client + per-action permissions
+
+Today `Client.owner` is a single free-text string and is purely
+descriptive — the UI shows it on the client card and on each call, but
+it doesn't gate anything. Once auth lands, evolve it to a real
+many-to-many `client_owners (client_id, user_id, role)` table so a
+client can be co-owned (e.g. AE + CSM + sales engineer) and each
+membership carries its own permission set. Suggested capabilities to
+model independently:
+
+- `client.view` — see the client and their calls (read-only).
+- `call.upload` — upload new recordings against this client.
+- `call.reanalyze` — re-run analysis (costs LLM/STT $$).
+- `call.edit_metadata` — rename, retag, override participants.
+- `client.manage_owners` — add/remove other owners.
+- `client.delete` — destructive, admin-only by default.
+
+Backed by either (a) a small fixed role enum (`viewer`, `contributor`,
+`admin`) that maps to those capabilities, or (b) a true ABAC store like
+Cerbos / OpenFGA if rules get complex. The current free-text `owner`
+field stays as a denormalized "primary owner" display for the card, but
+authorization always reads from the membership table.
+
+UX implication: the New Client modal grows an "Invite owners" step
+(email + role picker), the call detail surfaces the full owner list
+(not just one name), and upload/reanalyze buttons hide for users
+without those capabilities.
 
 **Effort:** 1.5–2h for a basic version, more for production-grade.
 

@@ -10,7 +10,7 @@ from uuid import uuid4
 from fastapi import APIRouter, Depends, Form, UploadFile, status
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
-from sqlalchemy import delete, select
+from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -74,7 +74,7 @@ _ALLOWED_CONTENT_TYPES = {"audio/mpeg", "audio/wav", "audio/x-wav", "audio/mp3"}
 async def _load_call_detail(call_id: int, session: AsyncSession) -> Call | None:
     result = await session.execute(
         select(Call)
-        .where(Call.id == call_id)
+        .where(Call.id == call_id, Call.deleted_at.is_(None))
         .options(
             selectinload(Call.call_tags).selectinload(CallTag.tag),
             selectinload(Call.insights),
@@ -164,22 +164,19 @@ async def bulk_delete_calls(
     if not ids:
         return JSONResponse(content={"deleted": 0})
 
-    # Fetch filenames before deleting
-    result = await session.execute(select(Call.filename).where(Call.id.in_(ids)))
-    filenames = [row[0] for row in result.fetchall()]
-
-    delete_result = await session.execute(delete(Call).where(Call.id.in_(ids)))
+    # Soft delete: stamp deleted_at on the matching active rows. The actual
+    # data (Analysis, Transcript) stays so the dashboard can keep counting
+    # historical cost — cost paid to OpenAI cannot be "refunded" by removing
+    # a call from the user's list.
+    now = datetime.now(UTC)
+    update_result = await session.execute(
+        update(Call)
+        .where(Call.id.in_(ids), Call.deleted_at.is_(None))
+        .values(deleted_at=now)
+    )
     await session.commit()
 
-    # Remove audio files
-    storage = Path(settings.AUDIO_STORAGE_DIR)
-    for filename in filenames:
-        try:
-            (storage / filename).unlink(missing_ok=True)
-        except FileNotFoundError:
-            pass
-
-    return JSONResponse(content={"deleted": delete_result.rowcount})
+    return JSONResponse(content={"deleted": update_result.rowcount})
 
 
 @router.post(
@@ -246,7 +243,9 @@ async def upload_call(
     if not force:
         existing = await session.scalar(
             select(Call).where(
-                Call.content_sha256 == content_sha256, Call.status == "done"
+                Call.content_sha256 == content_sha256,
+                Call.status == "done",
+                Call.deleted_at.is_(None),
             )
         )
         if existing:
@@ -315,7 +314,11 @@ async def list_calls(
     offset: int = 0,
 ) -> list[CallSummary]:
     limit = min(limit, 200)
-    stmt = select(Call).outerjoin(Client, Client.id == Call.client_id)
+    stmt = (
+        select(Call)
+        .outerjoin(Client, Client.id == Call.client_id)
+        .where(Call.deleted_at.is_(None))
+    )
 
     if search:
         pattern = f"%{search}%"
@@ -633,22 +636,23 @@ async def delete_call(
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> None:
     call = await session.get(Call, call_id)
-    if not call:
+    if not call or call.deleted_at is not None:
         raise DomainError(
             code="call_not_found",
             message=f"Call {call_id} not found",
             status_code=404,
         )
 
-    filename = call.filename
-    await session.delete(call)
+    # Soft delete — the row + its Analysis stay so the dashboard can keep
+    # counting cost and call volume. Audio file is normally already gone
+    # (deleted at the end of processing); the explicit unlink below covers
+    # calls deleted before they finished.
+    call.deleted_at = datetime.now(UTC)
     await session.commit()
 
-    storage = Path(settings.AUDIO_STORAGE_DIR)
-    try:
-        (storage / filename).unlink(missing_ok=True)
-    except FileNotFoundError:
-        pass
+    if call.filename:
+        storage = Path(settings.AUDIO_STORAGE_DIR)
+        (storage / call.filename).unlink(missing_ok=True)
 
 
 @router.get(

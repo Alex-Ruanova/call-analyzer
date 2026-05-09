@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from pathlib import Path
 
 import redis.asyncio as aioredis
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
@@ -98,6 +99,21 @@ async def _run(task_self: object, call_id: int) -> None:
         await engine.dispose()
 
 
+async def _delete_audio_for_call(
+    session_factory: async_sessionmaker, call_id: int
+) -> None:
+    """Best-effort: remove the on-disk audio after the pipeline finishes."""
+    async with session_factory() as session:
+        call = await session.get(Call, call_id)
+        if call is None or not call.filename:
+            return
+        audio_path = Path(settings.AUDIO_STORAGE_DIR) / call.filename
+    try:
+        audio_path.unlink(missing_ok=True)
+    except OSError as exc:
+        logger.warning("Could not delete audio for call %s: %s", call_id, exc)
+
+
 async def _set_status(
     session_factory: async_sessionmaker,
     call_id: int,
@@ -163,6 +179,13 @@ async def _run_pipeline(
         await update_analysis_cost(analysis.id, cost, session_factory, redis_client)
 
         await _set_status(session_factory, call_id, "done")
+
+        # Audio is no longer needed after analysis completes — the transcript
+        # carries everything downstream features consume. Drop the file to free
+        # disk + reduce PII footprint. The Call.filename column is kept as a
+        # historical reference; if a future reanalyze flow needs to re-STT,
+        # bring back retention via TTL (see docs/improvements.md).
+        await _delete_audio_for_call(session_factory, call_id)
 
     except DomainError as exc:
         logger.warning("DomainError for call %s: %s: %s", call_id, exc.code, exc.message)

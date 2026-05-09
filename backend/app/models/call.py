@@ -62,6 +62,10 @@ class Call(Base):
     updated_at: Mapped[datetime] = mapped_column(
         server_default=func.now(), onupdate=func.now()
     )
+    # Soft delete: rows with deleted_at IS NOT NULL are hidden from user-facing
+    # endpoints (lists, detail, client view) but kept for cost / volume audits
+    # in the dashboard. Cost cannot be "refunded" by removing a call.
+    deleted_at: Mapped[datetime | None] = mapped_column(index=True)
 
     client: Mapped[Client | None] = relationship(back_populates="calls")
     transcript: Mapped[Transcript | None] = relationship(

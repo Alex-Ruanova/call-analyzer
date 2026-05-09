@@ -15,6 +15,7 @@ Esta carpeta documenta deuda técnica conocida del proyecto: bugs corregidos con
 - [10 — Auto-migrate al arrancar la API (resuelto)](./10-auto-migrate-on-bootstrap.md)
 - [11 — Tag taxonomy ahora viene de la BD (resuelto)](./11-tag-taxonomy-from-db.md)
 - [13 — Talk:listen ratio respeta Participant.side (resuelto)](./13-talk-ratio-uses-participants-side.md)
+- [14 — Soft delete de calls + audio cleanup (resuelto, incluye migración)](./14-soft-delete-and-audio-cleanup.md)
 
 ## Convenciones
 
