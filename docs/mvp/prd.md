@@ -144,7 +144,7 @@ file_scope:
 - **Definition of Done (DoD):**
   - [ ] `alembic upgrade head` creates every table; `alembic downgrade base` reverses cleanly.
   - [x] `OpenAISTT` and `OpenAILLM` can be instantiated and have one passing unit test each using a `FakeOpenAIClient` (no network).
-  - [ ] `mypy --strict app/providers app/schemas` passes (or `pyright` equivalent).
+  - [x] `mypy --strict app/providers app/schemas` passes (or `pyright` equivalent).
 
 ---
 
