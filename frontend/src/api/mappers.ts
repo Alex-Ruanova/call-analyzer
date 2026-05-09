@@ -238,6 +238,7 @@ export function mapCallDetail(raw: BackendCallDetail): CallDetail {
   }
   const participants: Participant[] = Array.from(seen.entries()).map(
     ([label, { role, index }]) => ({
+      speaker_label: label,
       name: label,
       role: role ?? null,
       initials: label.slice(0, 2).toUpperCase(),

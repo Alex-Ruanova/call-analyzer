@@ -286,7 +286,7 @@ export default function DetailScreen({ moodViz = "ribbon" }: DetailScreenProps) 
         <div ref={scrollerRef} className="transcript-pane" style={{ flex: 1, overflowY: "auto", padding: "8px 22px 22px" }}>
           {filtered.map((m, i) => {
             const realIdx = segments.indexOf(m);
-            const p = currentParticipants.find((pp) => pp.name === m.speaker_label) ?? currentParticipants[0];
+            const p = currentParticipants.find((pp) => pp.speaker_label === m.speaker_label) ?? currentParticipants[0];
             return (
               <div
                 key={i}
@@ -309,7 +309,7 @@ export default function DetailScreen({ moodViz = "ribbon" }: DetailScreenProps) 
                   <div className="avatar avatar--xs" style={{ background: p?.color ?? "#6b7280", color: "#08080a" }}>
                     {p?.initials ?? "?"}
                   </div>
-                  <div style={{ fontSize: 12.5, fontWeight: 600 }}>{m.speaker_label}</div>
+                  <div style={{ fontSize: 12.5, fontWeight: 600 }}>{p.name}</div>
                   <span style={{ fontSize: 11, color: "var(--text-4)" }}>{m.speaker_role}</span>
                   <div style={{ flex: 1 }} />
                   <span style={{ fontSize: 11, color: "var(--accent)", fontFamily: "var(--font-mono)", fontVariantNumeric: "tabular-nums" }}>
@@ -482,7 +482,7 @@ function SummaryTab({ call, actions, setActions, participants, setParticipants }
     );
   const removeP = (i: number) => setParticipants(participants.filter((_, idx) => idx !== i));
   const addP = () =>
-    setParticipants([...participants, { name: "New person", role: "", side: "rep", color: "#a78bfa", initials: "NP" }]);
+    setParticipants([...participants, { speaker_label: "", name: "New person", role: "", side: "rep", color: "#a78bfa", initials: "NP" }]);
 
   const summary = call.analysis?.summary ?? "";
   const painPoints = call.pain_points.map((p) => p.text);

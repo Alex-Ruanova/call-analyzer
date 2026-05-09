@@ -40,6 +40,7 @@ export type HighlightTypesMap = Record<InsightKind, HighlightType>;
 
 // ---- Participants ----
 export interface Participant {
+  speaker_label: string;  // original label from diarization — stable key for matching
   name: string;
   role: string | null;
   initials: string;
