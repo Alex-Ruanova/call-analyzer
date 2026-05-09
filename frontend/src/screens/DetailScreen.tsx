@@ -1,16 +1,115 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useParams } from "react-router-dom";
-import { useCall, useTags, useClients } from "../api/hooks";
+import { useCall, useCallStatus, useTags, useClients } from "../api/hooks";
+import { useQueryClient } from "@tanstack/react-query";
 import { useSetCrumbOverride } from "../App";
 import { Icons, EmotionDot, TagEditor, ClientPicker, getEmotion } from "../components/components";
-import type { ActionItem, Participant, Tag } from "../types";
+import type { ActionItem, Participant, Tag, CallStatus } from "../types";
 
 interface DetailScreenProps {
   moodViz?: "ribbon" | "off";
 }
 
+const PROCESSING_STATUSES: CallStatus[] = ["pending", "transcribing", "analyzing"];
+
+const STATUS_STEPS: Record<CallStatus, { index: number; label: string }> = {
+  pending:      { index: 0, label: "Decoding audio" },
+  transcribing: { index: 1, label: "Transcribing speech" },
+  analyzing:    { index: 3, label: "Analyzing sentiment" },
+  done:         { index: 5, label: "Done" },
+  failed:       { index: -1, label: "Failed" },
+};
+
+const ALL_STEPS = [
+  "Decoding audio",
+  "Transcribing speech",
+  "Identifying participants",
+  "Analyzing sentiment",
+  "Extracting insights",
+];
+
+function ProcessingView({ status, errorMessage }: { status: CallStatus; errorMessage: string | null }) {
+  const stepInfo = STATUS_STEPS[status];
+  const activeStep = stepInfo?.index ?? 0;
+
+  if (status === "failed") {
+    return (
+      <div style={{ maxWidth: 560, margin: "80px auto", padding: "0 24px" }}>
+        <div className="card" style={{ padding: 24, borderLeft: "3px solid var(--danger, #f43f5e)" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
+            <Icons.AlertTriangle size={18} style={{ color: "#f43f5e" }} />
+            <span style={{ fontWeight: 600, fontSize: 15 }}>Analysis failed</span>
+          </div>
+          <p style={{ margin: 0, fontSize: 13, color: "var(--text-2)", lineHeight: 1.6 }}>
+            {errorMessage ?? "An unexpected error occurred during processing. Check worker logs for details."}
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ maxWidth: 560, margin: "80px auto", padding: "0 24px" }}>
+      <div style={{ textAlign: "center", marginBottom: 36 }}>
+        <div style={{ display: "inline-grid", placeItems: "center", position: "relative", marginBottom: 18 }}>
+          <svg width="80" height="80" viewBox="0 0 80 80">
+            <circle cx="40" cy="40" r="34" stroke="var(--bg-3)" strokeWidth="3" fill="none" />
+            <circle
+              cx="40" cy="40" r="34"
+              stroke="var(--accent)" strokeWidth="3" fill="none"
+              strokeDasharray={2 * Math.PI * 34}
+              strokeDashoffset={2 * Math.PI * 34 * (1 - Math.max(0, activeStep) / 5)}
+              transform="rotate(-90 40 40)"
+              strokeLinecap="round"
+              style={{ transition: "stroke-dashoffset 400ms ease" }}
+            />
+          </svg>
+          <div style={{ position: "absolute", inset: 0, display: "grid", placeItems: "center", fontSize: 14, fontWeight: 600 }}>
+            {Math.round(Math.max(0, activeStep) / 5 * 100)}%
+          </div>
+        </div>
+        <h2 style={{ fontSize: 18, fontWeight: 600, margin: 0, letterSpacing: "-0.01em" }}>Analyzing your call</h2>
+        <p style={{ color: "var(--text-3)", fontSize: 13, margin: "6px 0 0" }}>
+          This usually takes about 30 seconds for a 5-minute call.
+        </p>
+      </div>
+      <div className="card" style={{ padding: 18 }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          {ALL_STEPS.map((label, i) => {
+            const state = i < activeStep ? "done" : i === activeStep ? "active" : "pending";
+            return (
+              <div key={label} style={{ display: "flex", alignItems: "center", gap: 12, opacity: state === "pending" ? 0.4 : 1, transition: "opacity 200ms" }}>
+                <div style={{ width: 18, height: 18, borderRadius: "50%", display: "grid", placeItems: "center", background: state === "done" ? "var(--accent)" : "var(--bg-3)", border: state === "active" ? "1.5px solid var(--accent)" : "1px solid var(--border)" }}>
+                  {state === "done" && <Icons.Check size={11} style={{ color: "var(--accent-fg)" }} />}
+                  {state === "active" && <span style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--accent)", animation: "pulse-soft 1.2s infinite" }} />}
+                </div>
+                <div style={{ fontSize: 13, color: state === "pending" ? "var(--text-3)" : "var(--text)", fontWeight: state === "active" ? 500 : 400 }}>
+                  {label}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function DetailScreen({ moodViz = "ribbon" }: DetailScreenProps) {
   const { id = "call-001" } = useParams<{ id: string }>();
+
+  // Poll status first; invalidate full-detail query when processing completes
+  const queryClient = useQueryClient();
+  const { data: statusData } = useCallStatus(id);
+  const isProcessing = statusData != null && PROCESSING_STATUSES.includes(statusData.status);
+  const isFailed = statusData?.status === "failed";
+  const isDone = statusData?.status === "done";
+
+  // When processing completes, invalidate the cached call detail so it refetches fresh data
+  useEffect(() => {
+    if (isDone) void queryClient.invalidateQueries({ queryKey: ["call", id] });
+  }, [isDone, id, queryClient]);
+
   const { data: call, isLoading, isError } = useCall(id);
   useSetCrumbOverride(call?.title ?? null);
   const { data: allTagsData } = useTags();
@@ -35,6 +134,16 @@ export default function DetailScreen({ moodViz = "ribbon" }: DetailScreenProps) 
 
   const allTags = allTagsData ?? [];
   const allClients = clientsData ?? [];
+
+  // statusData acts as an *override*: only gate on it when it explicitly says the call is
+  // in flight or failed. If statusData is absent (network blip, slow query), fall through
+  // and let useCall render whatever it has — every failure must be visible.
+  if (isProcessing) {
+    return <ProcessingView status={statusData.status} errorMessage={null} />;
+  }
+  if (isFailed) {
+    return <ProcessingView status="failed" errorMessage={statusData?.error_message ?? null} />;
+  }
 
   if (isError) return <div className="empty-state">Call not found.</div>;
   if (isLoading || !call) {

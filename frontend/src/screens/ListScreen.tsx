@@ -1,98 +1,99 @@
 import { useState, useMemo, useRef, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { useCalls, useClients, useTags } from "../api/hooks";
+import { useCalls, useClients, useTags, useUpdateTags, useAssignClient, useDeleteCall, useBulkDeleteCalls, useCreateClient } from "../api/hooks";
 import { Icons, SentimentBar, TagEditor, useOutsideClick } from "../components/components";
-import type { CallSummary, Tag, Client } from "../types";
+import type { Tag, Client } from "../types";
 
 interface SortState {
   key: string;
   dir: "asc" | "desc";
 }
 
+const BACKEND_SORT_KEYS = new Set(["date", "title", "duration", "status"]);
+
 export default function ListScreen() {
   const navigate = useNavigate();
-  const { data: callsData } = useCalls();
-  const { data: clientsData } = useClients();
-  const { data: tagsData } = useTags();
 
-  const [localCalls, setLocalCalls] = useState<CallSummary[] | null>(null);
-  const calls = localCalls ?? callsData ?? [];
-  const allTags = tagsData ?? [];
-  const allClients = clientsData ?? [];
-
+  // Debounced search: input updates immediately, search param sent after 300ms
+  const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
+  useEffect(() => {
+    const t = setTimeout(() => setSearch(searchInput), 300);
+    return () => clearTimeout(t);
+  }, [searchInput]);
+
   const [assignFilter, setAssignFilter] = useState<"all" | "assigned" | "unassigned">("all");
   const [sort, setSort] = useState<SortState>({ key: "date", dir: "desc" });
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [openMenu, setOpenMenu] = useState<string | null>(null);
   const [assignFor, setAssignFor] = useState<string | null>(null);
 
-  // Sync callsData into localCalls when it first loads
-  useEffect(() => {
-    if (callsData && localCalls === null) {
-      setLocalCalls(callsData);
-    }
-  }, [callsData, localCalls]);
+  // Only pass sort/order to backend for supported columns; client/sentiment sorted locally
+  const isBackendSort = BACKEND_SORT_KEYS.has(sort.key);
+  const { data: callsData } = useCalls({
+    search: search || undefined,
+    assigned: assignFilter !== "all" ? assignFilter : undefined,
+    sort: isBackendSort ? sort.key : "date",
+    order: isBackendSort ? sort.dir : "desc",
+  });
 
-  const updateTags = (callId: string, nextTags: Tag[]) => {
-    setLocalCalls((cs) => (cs ?? []).map((c) => (c.id === callId ? { ...c, tags: nextTags } : c)));
-  };
+  const { data: clientsData } = useClients();
+  const { data: tagsData } = useTags();
+  const allTags = tagsData ?? [];
+  const allClients = clientsData ?? [];
 
-  const assignClient = (callId: string, clientName: string) => {
-    const client = allClients.find((c) => c.name === clientName);
-    setLocalCalls((cs) =>
-      (cs ?? []).map((c) =>
-        c.id === callId
-          ? { ...c, client_name: clientName, client_id: client?.id ?? null }
-          : c
-      )
-    );
-    setAssignFor(null);
-  };
+  // Mutations
+  const updateTagsMutation = useUpdateTags();
+  const assignClientMutation = useAssignClient();
+  const deleteCallMutation = useDeleteCall();
+  const bulkDeleteMutation = useBulkDeleteCalls();
+  const createClientMutation = useCreateClient();
 
-  const filtered = useMemo(() => {
-    let r = calls.filter((c) => {
-      const matchSearch =
-        !search ||
-        c.title.toLowerCase().includes(search.toLowerCase()) ||
-        (c.client_name ?? "").toLowerCase().includes(search.toLowerCase());
-      const isUnassigned = !c.client_id;
-      const matchAssign =
-        assignFilter === "all" ||
-        (assignFilter === "unassigned" && isUnassigned) ||
-        (assignFilter === "assigned" && !isUnassigned);
-      return matchSearch && matchAssign;
-    });
-    r = [...r].sort((a, b) => {
-      if (sort.key === "date") {
-        const av = a.created_at;
-        const bv = b.created_at;
-        return sort.dir === "asc" ? av.localeCompare(bv) : bv.localeCompare(av);
-      }
-      if (sort.key === "title") {
-        return sort.dir === "asc"
-          ? a.title.localeCompare(b.title)
-          : b.title.localeCompare(a.title);
-      }
-      if (sort.key === "client") {
+  // Client-side sort for columns the backend doesn't support
+  const calls = useMemo(() => {
+    const r = [...(callsData ?? [])];
+    if (sort.key === "client") {
+      r.sort((a, b) => {
         const av = a.client_name ?? "";
         const bv = b.client_name ?? "";
         return sort.dir === "asc" ? av.localeCompare(bv) : bv.localeCompare(av);
-      }
-      if (sort.key === "sentiment") {
+      });
+    } else if (sort.key === "sentiment") {
+      r.sort((a, b) => {
         const av = a.overall_sentiment != null ? parseFloat(a.overall_sentiment) : -1;
         const bv = b.overall_sentiment != null ? parseFloat(b.overall_sentiment) : -1;
         return sort.dir === "asc" ? av - bv : bv - av;
-      }
-      if (sort.key === "duration") {
-        const av = a.duration_seconds ?? 0;
-        const bv = b.duration_seconds ?? 0;
-        return sort.dir === "asc" ? av - bv : bv - av;
-      }
-      return 0;
-    });
+      });
+    }
     return r;
-  }, [calls, search, assignFilter, sort]);
+  }, [callsData, sort]);
+
+  const handleUpdateTags = (callId: string, nextTags: Tag[]) => {
+    updateTagsMutation.mutate({ callId, tagIds: nextTags.map((t) => t.id) });
+  };
+
+  const handleAssignClient = (callId: string, clientId: string) => {
+    assignClientMutation.mutate({ callId, clientId });
+    setAssignFor(null);
+  };
+
+  const handleCreateClientAndAssign = (callId: string, name: string) => {
+    createClientMutation.mutate({ name }, {
+      onSuccess: (result) => {
+        assignClientMutation.mutate({ callId, clientId: result.id });
+      },
+    });
+  };
+
+  const deleteSelected = () => {
+    bulkDeleteMutation.mutate([...selected]);
+    setSelected(new Set());
+  };
+
+  const deleteOne = (id: string) => {
+    deleteCallMutation.mutate(id);
+    setOpenMenu(null);
+  };
 
   const toggleSort = (k: string) =>
     setSort((s) => (s.key === k ? { key: k, dir: s.dir === "asc" ? "desc" : "asc" } : { key: k, dir: "desc" }));
@@ -102,14 +103,6 @@ export default function ListScreen() {
       n.has(id) ? n.delete(id) : n.add(id);
       return n;
     });
-  const deleteSelected = () => {
-    setLocalCalls((cs) => (cs ?? []).filter((c) => !selected.has(c.id)));
-    setSelected(new Set());
-  };
-  const deleteOne = (id: string) => {
-    setLocalCalls((cs) => (cs ?? []).filter((c) => c.id !== id));
-    setOpenMenu(null);
-  };
 
   const unassignedCount = calls.filter((c) => !c.client_id).length;
 
@@ -118,7 +111,7 @@ export default function ListScreen() {
       <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
         <h1 style={{ fontSize: 18, fontWeight: 600, margin: 0, letterSpacing: "-0.01em" }}>Calls</h1>
         <span style={{ color: "var(--text-4)", fontSize: 13 }}>
-          {filtered.length} of {calls.length}
+          {calls.length}
         </span>
         {unassignedCount > 0 && assignFilter !== "unassigned" && (
           <button
@@ -153,8 +146,8 @@ export default function ListScreen() {
           <input
             className="input input--search"
             placeholder="Search calls or clients…"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
           />
         </div>
         <FilterPill
@@ -177,16 +170,16 @@ export default function ListScreen() {
             <tr>
               <th style={{ width: 28, paddingLeft: 16 }}>
                 <button
-                  className={`checkbox ${selected.size === filtered.length && filtered.length > 0 ? "checkbox--on" : ""}`}
+                  className={`checkbox ${selected.size === calls.length && calls.length > 0 ? "checkbox--on" : ""}`}
                   onClick={() =>
                     setSelected(
-                      selected.size === filtered.length
+                      selected.size === calls.length
                         ? new Set()
-                        : new Set(filtered.map((c) => c.id))
+                        : new Set(calls.map((c) => c.id))
                     )
                   }
                 >
-                  {selected.size === filtered.length && filtered.length > 0 && <Icons.Check size={9} />}
+                  {selected.size === calls.length && calls.length > 0 && <Icons.Check size={9} />}
                 </button>
               </th>
               <Th label="Title" k="title" sort={sort} onSort={toggleSort} />
@@ -198,7 +191,7 @@ export default function ListScreen() {
             </tr>
           </thead>
           <tbody>
-            {filtered.map((c) => {
+            {calls.map((c) => {
               const sentiment = c.overall_sentiment != null ? parseFloat(c.overall_sentiment) : 0;
               const isUnassigned = !c.client_id;
               const durationMin = c.duration_seconds != null ? Math.floor(c.duration_seconds / 60) : 0;
@@ -226,7 +219,7 @@ export default function ListScreen() {
                       <TagEditor
                         tags={c.tags}
                         allTags={allTags}
-                        onChange={(next) => updateTags(c.id, next)}
+                        onChange={(next) => handleUpdateTags(c.id, next)}
                       />
                     </div>
                   </td>
@@ -235,22 +228,9 @@ export default function ListScreen() {
                       <UnassignedBadge
                         open={assignFor === c.id}
                         onOpen={() => setAssignFor(assignFor === c.id ? null : c.id)}
-                        onAssign={(name) => assignClient(c.id, name)}
+                        onAssign={(clientId) => handleAssignClient(c.id, clientId)}
                         clients={allClients}
-                        onCreateClient={(name) => {
-                          const created: Client = {
-                            id: `c-new-${Date.now()}`,
-                            name,
-                            industry: null,
-                            owner: null,
-                            calls: 0,
-                            last_call: null,
-                            sentiment: null,
-                            health: "on-track",
-                            arr: null,
-                          };
-                          assignClient(c.id, created.name);
-                        }}
+                        onCreateClient={(name) => handleCreateClientAndAssign(c.id, name)}
                       />
                     ) : (
                       <span style={{ color: "var(--text-2)" }}>{c.client_name ?? "—"}</span>
@@ -291,7 +271,7 @@ export default function ListScreen() {
                 </tr>
               );
             })}
-            {filtered.length === 0 && (
+            {calls.length === 0 && (
               <tr>
                 <td colSpan={7} style={{ textAlign: "center", padding: 60, color: "var(--text-3)" }}>
                   No calls match your filters.
@@ -310,7 +290,7 @@ export default function ListScreen() {
 interface UnassignedBadgeProps {
   open: boolean;
   onOpen: () => void;
-  onAssign: (name: string) => void;
+  onAssign: (clientId: string) => void;
   clients: Client[];
   onCreateClient: (name: string) => void;
 }
@@ -358,7 +338,7 @@ function UnassignedBadge({ open, onOpen, onAssign, clients, onCreateClient }: Un
           <div className="menu__divider" />
           <div style={{ maxHeight: 200, overflowY: "auto" }}>
             {filtered.map((c) => (
-              <button key={c.id} className="menu__item" onClick={() => onAssign(c.name)}>
+              <button key={c.id} className="menu__item" onClick={() => onAssign(c.id)}>
                 <Icons.Building size={11} />
                 {c.name}
               </button>

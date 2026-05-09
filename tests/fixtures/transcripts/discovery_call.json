@@ -1,0 +1,14 @@
+{
+  "name": "discovery_call",
+  "language": "en",
+  "duration_seconds": 600.0,
+  "segments": [
+    {"idx": 0, "start_seconds": 0.0,   "end_seconds": 45.0,  "speaker_label": "SPEAKER_00", "speaker_role": "rep",    "text": "Thanks for joining today. Before we look at the product, I'd love to understand how your team currently manages sales call reviews.", "mood": null},
+    {"idx": 1, "start_seconds": 45.0,  "end_seconds": 130.0, "speaker_label": "SPEAKER_01", "speaker_role": "client", "text": "Honestly it's very manual. Our sales managers listen to maybe one call a week per rep, which means we're missing most of what's happening in the field.", "mood": null},
+    {"idx": 2, "start_seconds": 130.0, "end_seconds": 210.0, "speaker_label": "SPEAKER_00", "speaker_role": "rep",    "text": "How many reps are we talking about? And are they distributed across time zones?", "mood": null},
+    {"idx": 3, "start_seconds": 210.0, "end_seconds": 320.0, "speaker_label": "SPEAKER_01", "speaker_role": "client", "text": "We have 45 reps across North America and Europe. The manager coverage problem is even worse in EMEA because the manager is 6 hours behind.", "mood": null},
+    {"idx": 4, "start_seconds": 320.0, "end_seconds": 420.0, "speaker_label": "SPEAKER_00", "speaker_role": "rep",    "text": "That's a significant coaching gap. Our platform automatically flags the top three moments from every call — objections, buying signals, key questions — so managers can review in 3 minutes instead of 30.", "mood": null},
+    {"idx": 5, "start_seconds": 420.0, "end_seconds": 520.0, "speaker_label": "SPEAKER_01", "speaker_role": "client", "text": "That would be transformative for us. If managers could review 10 calls a week instead of one, we'd catch problems much earlier. What does a typical deployment look like?", "mood": null},
+    {"idx": 6, "start_seconds": 520.0, "end_seconds": 600.0, "speaker_label": "SPEAKER_00", "speaker_role": "rep",    "text": "Standard rollout is 3 to 4 weeks — two for setup and integration, two for manager onboarding. I'll send you our onboarding guide after this call.", "mood": null}
+  ]
+}

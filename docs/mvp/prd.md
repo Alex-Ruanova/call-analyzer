@@ -275,8 +275,8 @@ file_scope:
   - [x] 6.8 Delete `frontend/scripts/data.js` and any remaining `window.ALTUR` references.
 - **Definition of Done (DoD):**
   - [x] `grep -r "ALTUR" frontend/src` returns nothing.
-  - [ ] Uploading a real WAV produces a `done` call whose detail screen renders with real diarized transcript, real mood ribbon, real tags, real insights.
-  - [ ] List filters (`assigned=unassigned`, `tag=Discovery`, `search=cobalt`) round-trip to the backend.
+  - [x] Uploading a real WAV produces a `done` call whose detail screen renders with real diarized transcript, real mood ribbon, real tags, real insights.
+  - [x] List filters (`assigned=unassigned`, `tag=Discovery`, `search=cobalt`) round-trip to the backend.
   - [x] Dashboard renders without any `ALTUR.DASHBOARD` reference.
 
 ---
@@ -296,15 +296,15 @@ file_scope:
 -->
 - **Description:** Round out the test surface, build the model-comparison eval, write the README + architecture doc + prompt-design doc, and ship the root `Makefile`.
 - **Tasks:**
-  - [ ] 7.1 Backend tests (keep the count low, pick high-leverage cases per CLAUDE.md):
+  - [x] 7.1 Backend tests (keep the count low, pick high-leverage cases per CLAUDE.md):
     - Pipeline integration: fake STT + fake LLM, end-to-end, assert persisted state.
     - Provider contract: `OpenAISTT` + `OpenAILLM` against a recorded fixture (use `respx` or a hand-rolled fake `httpx` transport — no live network).
     - API: tests already in Phase 5 DoD; add one for JSON export shape.
     - Validation: oversized upload, wrong extension, missing client.
-  - [ ] 7.2 Frontend tests (vitest): `UploadScreen` happy path (file + client → mutation called) and `ProcessingScreen` polling-to-detail transition. That's it — don't chase coverage.
-  - [ ] 7.3 `scripts/eval_models.py` — load 5 sample calls (audio fixtures in `tests/fixtures/audio/`), run each LLM stage through both `gpt-4o-mini` and `gpt-4.1-mini`, write side-by-side JSON to `docs/model-eval/results.json`. README links to it.
-  - [ ] 7.4 `docs/prompt-design.md` — proposed tag taxonomy with justification, prompt-by-stage with version, evaluation strategy ("how would you measure tagging quality over time": per-stage labelled fixtures, agreement rate vs. human labels, drift detection by tracking new tag emergence per week).
-  - [ ] 7.5 `docs/architecture-and-scale.md` — answers to the 4 mandatory questions in `altur-instructions.md` §5 (10k calls/day scaling, bottlenecks, prod changes, PII handling). Must also document the following concrete production-evolution paths (none implemented in MVP, all framed as "what I'd change for production" with the trigger condition that justifies the change):
+  - [x] 7.2 Frontend tests (vitest): `UploadScreen` happy path (file + client → mutation called) and `ProcessingScreen` polling-to-detail transition. That's it — don't chase coverage.
+  - [x] 7.3 `scripts/eval_models.py` — load 5 sample calls (audio fixtures in `tests/fixtures/audio/`), run each LLM stage through both `gpt-4o-mini` and `gpt-4.1-mini`, write side-by-side JSON to `docs/model-eval/results.json`. README links to it.
+  - [x] 7.4 `docs/prompt-design.md` — proposed tag taxonomy with justification, prompt-by-stage with version, evaluation strategy ("how would you measure tagging quality over time": per-stage labelled fixtures, agreement rate vs. human labels, drift detection by tracking new tag emergence per week).
+  - [x] 7.5 `docs/architecture-and-scale.md` — answers to the 4 mandatory questions in `altur-instructions.md` §5 (10k calls/day scaling, bottlenecks, prod changes, PII handling). Must also document the following concrete production-evolution paths (none implemented in MVP, all framed as "what I'd change for production" with the trigger condition that justifies the change):
 
     - **Semantic search + embeddings layer.** `text-embedding-3-small` on every transcript chunk, stored in Postgres with `pgvector` (HNSW index). Unlocks (a) global search across calls/clients/transcripts (exactly the "search for client X and find every transcript that mentions them" feature in `docs/ideas/ideas.md`), (b) similarity-based tag suggestion as a cheaper alternative to per-call LLM tagging at scale, (c) clustering pain points / objections across thousands of calls without re-running the LLM, (d) RAG into the synthesis prompt with top-k similar past calls. Trade-offs: extra storage, embed-on-write latency, HNSW vs IVFFlat index choice, re-embedding when the embedding model revs.
 
@@ -323,8 +323,8 @@ file_scope:
     - **PII handling and storage.** Audio + transcript = high-PII content. Production checklist: (a) encrypt audio at rest (S3 SSE-KMS); (b) row-level encryption on `Transcript.raw_payload_json` and `TranscriptSegment.text`; (c) explicit retention policy (e.g., delete audio after 90 days, retain only redacted transcripts); (d) PII redaction pass before LLM stages (regex + a small NER pass for names/emails/phones) — currently we send raw transcripts to OpenAI which is acceptable in MVP only if calls are non-sensitive; (e) data residency (EU vs US OpenAI endpoint, regional Postgres); (f) per-row audit log for who viewed which call; (g) right-to-delete handler that cascades through audio + transcript + analysis + embeddings.
 
     - **Per-call cost & margin metrics.** MVP already tracks token cost per call (Phase 4.6). Production extension: aggregate to per-client / per-rep / per-org dashboards, alert when a single call exceeds N× the median cost, expose as a "cost per dollar of pipeline analyzed" KPI. This is the answer to the brief's scale question — at 10k calls/day, cost-per-call is the difference between "this is profitable" and "this burns the runway."
-  - [ ] 7.6 `README.md` at repo root: setup (Docker + local), how to run tests, env vars table, assumptions, architecture summary, "what I'd add with more time" (auth, S3, deployment, reasoning-model fallback, real diarization vendor benchmark).
-  - [ ] 7.7 `Makefile` at repo root with at minimum:
+  - [x] 7.6 `README.md` at repo root: setup (Docker + local), how to run tests, env vars table, assumptions, architecture summary, "what I'd add with more time" (auth, S3, deployment, reasoning-model fallback, real diarization vendor benchmark).
+  - [x] 7.7 `Makefile` at repo root with at minimum:
     - `make up` → `docker compose up --build`
     - `make down`
     - `make migrate` → run alembic in api container
@@ -334,11 +334,11 @@ file_scope:
     - `make logs` / `make shell-api` / `make shell-worker` / `make psql`
     - `make fmt` / `make lint`
     - `make clean`
-  - [ ] 7.8 Seed script (`scripts/seed.py`) that pre-populates the DB so a reviewer cloning the repo runs `make up && make seed` and immediately sees populated dashboard/list/clients.
+  - [x] 7.8 Seed script (`scripts/seed.py`) that pre-populates the DB so a reviewer cloning the repo runs `make up && make seed` and immediately sees populated dashboard/list/clients.
 - **Definition of Done (DoD):**
-  - [ ] `make up && make migrate && make seed` from a fresh clone produces a working app at `http://localhost:5173` with populated data.
-  - [ ] `make test` runs the full test suite (backend + frontend) and exits 0.
-  - [ ] `make eval` produces `docs/model-eval/results.json`.
-  - [ ] README has a "Run with one command" section showing `make up` as the entry point.
-  - [ ] Architecture doc and prompt-design doc are complete and linked from README.
+  - [x] `make up && make migrate && make seed` from a fresh clone produces a working app at `http://localhost:5173` with populated data.
+  - [x] `make test` runs the full test suite (backend + frontend) and exits 0.
+  - [x] `make eval` produces `docs/model-eval/results.json`.
+  - [x] README has a "Run with one command" section showing `make up` as the entry point.
+  - [x] Architecture doc and prompt-design doc are complete and linked from README.
   - [ ] Git history shows meaningful conventional commits per phase (no single "done" commit).

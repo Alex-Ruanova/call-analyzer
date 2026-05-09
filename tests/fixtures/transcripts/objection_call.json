@@ -1,0 +1,13 @@
+{
+  "name": "objection_call",
+  "language": "en",
+  "duration_seconds": 480.0,
+  "segments": [
+    {"idx": 0, "start_seconds": 0.0,   "end_seconds": 40.0,  "speaker_label": "SPEAKER_00", "speaker_role": "rep",    "text": "I wanted to follow up on the pricing conversation from last week. Did you have a chance to review the proposal?", "mood": null},
+    {"idx": 1, "start_seconds": 40.0,  "end_seconds": 140.0, "speaker_label": "SPEAKER_01", "speaker_role": "client", "text": "I did. Honestly the per-seat pricing is the sticking point. At our scale of 200 seats the annual cost is significant, and the CFO is pushing back hard on any new SaaS spend this quarter.", "mood": null},
+    {"idx": 2, "start_seconds": 140.0, "end_seconds": 220.0, "speaker_label": "SPEAKER_00", "speaker_role": "rep",    "text": "I hear you on budget pressure. Can you help me understand what the CFO's primary concern is — is it the absolute spend, or the ROI case?", "mood": null},
+    {"idx": 3, "start_seconds": 220.0, "end_seconds": 320.0, "speaker_label": "SPEAKER_01", "speaker_role": "client", "text": "Mostly ROI. We've bought tools before that the team didn't adopt. If I can show that reps who use it close faster and the managers actually save time, that's a much easier conversation.", "mood": null},
+    {"idx": 4, "start_seconds": 320.0, "end_seconds": 400.0, "speaker_label": "SPEAKER_00", "speaker_role": "rep",    "text": "That's a fair concern. Our typical customer sees 15 to 20 percent faster ramp for new reps. I can share a case study from a company your size and put together an ROI model based on your numbers.", "mood": null},
+    {"idx": 5, "start_seconds": 400.0, "end_seconds": 480.0, "speaker_label": "SPEAKER_01", "speaker_role": "client", "text": "If you can do that, I can bring it back to the CFO. One more thing — is there a volume discount at 200 seats? That would also help the conversation.", "mood": null}
+  ]
+}

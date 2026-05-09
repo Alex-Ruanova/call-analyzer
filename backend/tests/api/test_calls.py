@@ -218,6 +218,38 @@ async def test_tag_override_replaces_llm_tags(client: AsyncClient, db_session) -
 
 
 @pytest.mark.anyio
+async def test_json_export_full_shape(client: AsyncClient) -> None:
+    """Export JSON must contain all 7 top-level keys with correct types."""
+    audio = b"\xff\xfb" + b"\x00" * 50
+    upload_resp = await client.post("/api/calls", data={"title": "Export Shape Test"}, files={"file": ("esh.mp3", io.BytesIO(audio), "audio/mpeg")})
+    call_id = upload_resp.json()["call_id"]
+
+    resp = await client.get(f"/api/calls/{call_id}/export")
+    assert resp.status_code == 200
+    data = resp.json()
+
+    # All top-level keys must be present
+    assert set(data.keys()) >= {"call", "transcript", "tags", "insights", "action_items", "analysis", "exported_at"}
+
+    # call sub-object must have id and title
+    assert data["call"]["id"] == call_id
+    assert data["call"]["title"] == "Export Shape Test"
+
+    # transcript must have segments key
+    assert "segments" in data["transcript"]
+    assert isinstance(data["transcript"]["segments"], list)
+
+    # tags and insights must be lists
+    assert isinstance(data["tags"], list)
+    assert isinstance(data["insights"], list)
+    assert isinstance(data["action_items"], list)
+
+    # exported_at must be an ISO 8601 string
+    assert isinstance(data["exported_at"], str)
+    assert "T" in data["exported_at"]
+
+
+@pytest.mark.anyio
 async def test_delete_call(client: AsyncClient) -> None:
     audio = b"\xff\xfb" + b"\x00" * 50
     upload_resp = await client.post("/api/calls", data={"title": "Delete Me"}, files={"file": ("dm.mp3", io.BytesIO(audio), "audio/mpeg")})
