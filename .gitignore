@@ -19,6 +19,9 @@ storage/audio/*.mp3
 .env
 backend/.env
 
+# Private docs (operator runbooks, not for reviewers)
+docs/deployment.md
+
 # IDE
 .DS_Store
 .idea/
