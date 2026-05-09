@@ -1,12 +1,3 @@
-"""
-Celery task: process_call
-
-WORKER CONFIGURATION NOTE (cannot set here — celery_app.py is outside this task's scope):
-  worker_pool = "prefork"           # must not use gevent/eventlet with asyncio.run()
-  worker_max_tasks_per_child = 50   # bound resource leakage per worker process
-
-These settings must be added to celery_app.config_from_object() in backend/app/celery_app.py.
-"""
 
 from __future__ import annotations
 

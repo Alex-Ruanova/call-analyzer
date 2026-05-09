@@ -160,8 +160,8 @@ file_scope:
 -->
 - **Description:** The end-to-end async pipeline: on upload the API enqueues `process_call`, which orchestrates STT → mood → tags → insights → synthesis using the providers from Phase 3. Each stage is its own Celery task so it can retry / be observed independently. Prompts live as plain Python strings with version constants.
 - **Tasks:**
-  - [ ] 4.1 `app/tasks/process_call.py` — top-level Celery task `process_call(call_id)`. Updates `Call.status` at every stage (`transcribing → analyzing → done|failed`), writes `error_message` on exceptions, swallows nothing silently.
-  - [ ] 4.2 Stage functions (called inside the task, not separate Celery tasks — keeps the pipeline simple while preserving stage isolation):
+  - [x] 4.1 `app/tasks/process_call.py` — top-level Celery task `process_call(call_id)`. Updates `Call.status` at every stage (`transcribing → analyzing → done|failed`), writes `error_message` on exceptions, swallows nothing silently.
+  - [x] 4.2 Stage functions (called inside the task, not separate Celery tasks — keeps the pipeline simple while preserving stage isolation):
     - `transcribe_stage(call) -> Transcript` — handles audio chunking + STT + stitching:
       - **Chunking:** if file > 24 MB, split with `ffmpeg` at silence boundaries (`silencedetect` filter, ~500 ms threshold) — never split mid-word, that wrecks diarization. Cap chunks at ~10 min / 24 MB whichever first.
       - **Per-chunk transcribe:** call `STTProvider` for each chunk in parallel (bounded concurrency).
@@ -172,14 +172,14 @@ file_scope:
     - `tag_stage(transcript) -> list[Tag]` — `TagSuggestion` schema, multi-label; persists `CallTag` rows with `source="llm"`.
     - `insight_stage(transcript) -> list[Insight]` + `list[ActionItem]` — `InsightExtraction` schema; persists rows.
     - `synthesis_stage(transcript, insights) -> Analysis` — `Synthesis` schema, computes overall sentiment + headline + summary + talk ratio (talk ratio is computable from segment durations, not the LLM).
-  - [ ] 4.3 Prompts in `app/llm/prompts/` — one file per stage (`mood.py`, `tags.py`, `insights.py`, `synthesis.py`). Each exports `PROMPT_VERSION = "v1"` and a `build_prompt(...)` function. Prompt design and the proposed tag taxonomy (with justification) is captured in `docs/prompt-design.md` (Phase 7).
-  - [ ] 4.4 Configurable retry: `process_call` retries the *whole* call on infrastructure errors (Redis dropped, DB blip) but does not retry on `OpenAIBadRequest`/validation errors — those flip the call to `failed` with a useful message.
-  - [ ] 4.5 Concurrency: Celery worker `--concurrency=4` (configurable). Per-stage rate-limit guard for OpenAI implemented as a **Redis-backed token bucket** on the provider class (so it caps total in-flight calls *across* all worker processes, not per-process) — prevents 1k-batch stampedes.
-  - [ ] 4.6 **Per-call cost tracking:** capture `usage` tokens (prompt + completion) returned by every OpenAI call inside the providers, sum per stage, persist on `Analysis` as `cost_usd_breakdown` (JSON: `{stt, mood, tags, insights, synthesis}`) and `cost_usd_total`. Pricing table is a config constant per model — easy to update when prices change. Surface on `CallDetail` so the UI can show "this call cost $0.0123 to analyze."
+  - [x] 4.3 Prompts in `app/llm/prompts/` — one file per stage (`mood.py`, `tags.py`, `insights.py`, `synthesis.py`). Each exports `PROMPT_VERSION = "v1"` and a `build_prompt(...)` function. Prompt design and the proposed tag taxonomy (with justification) is captured in `docs/prompt-design.md` (Phase 7).
+  - [x] 4.4 Configurable retry: `process_call` retries the *whole* call on infrastructure errors (Redis dropped, DB blip) but does not retry on `OpenAIBadRequest`/validation errors — those flip the call to `failed` with a useful message.
+  - [x] 4.5 Concurrency: Celery worker `--concurrency=4` (configurable). Per-stage rate-limit guard for OpenAI implemented as a **Redis-backed token bucket** on the provider class (so it caps total in-flight calls *across* all worker processes, not per-process) — prevents 1k-batch stampedes.
+  - [x] 4.6 **Per-call cost tracking:** capture `usage` tokens (prompt + completion) returned by every OpenAI call inside the providers, sum per stage, persist on `Analysis` as `cost_usd_breakdown` (JSON: `{stt, mood, tags, insights, synthesis}`) and `cost_usd_total`. Pricing table is a config constant per model — easy to update when prices change. Surface on `CallDetail` so the UI can show "this call cost $0.0123 to analyze."
 - **Definition of Done (DoD):**
-  - [ ] End-to-end pytest with fake STT + LLM providers: insert one fake audio path → run `process_call` synchronously → assert `Call.status == done`, transcript persisted with N segments, ≥1 tag, ≥1 insight, `Analysis` row exists.
-  - [ ] Failure pytest: fake STT raises → `Call.status == failed`, `error_message` populated, no partial transcript persisted.
-  - [ ] `LLM_MODEL_TAGGING=gpt-4.1-mini` env override is reflected in the `Analysis.llm_model_used` field.
+  - [x] End-to-end pytest with fake STT + LLM providers: insert one fake audio path → run `process_call` synchronously → assert `Call.status == done`, transcript persisted with N segments, ≥1 tag, ≥1 insight, `Analysis` row exists.
+  - [x] Failure pytest: fake STT raises → `Call.status == failed`, `error_message` populated, no partial transcript persisted.
+  - [x] `LLM_MODEL_TAGGING=gpt-4.1-mini` env override is reflected in the `Analysis.llm_model_used` field.
 
 ---
 
@@ -194,7 +194,7 @@ file_scope:
 -->
 - **Description:** Implement every endpoint required by the existing frontend. Each endpoint maps to a specific UI need, listed below.
 - **Tasks:**
-  - [ ] 5.1 Calls:
+  - [x] 5.1 Calls:
     - `POST /api/calls` — multipart `file` + `client_id` (or `client` body for create-on-the-fly). Validates extension (`.mp3`/`.wav`), content-type, max size (cap at 500 MB to match upload UI). Uvicorn / ASGI app configured for 500 MB body and 5-minute upload timeout. Persists file, creates `Call(status=pending)`, enqueues `process_call.delay(call_id)`, returns `202 {call_id}` immediately.
     - `GET /api/calls` — list with query params: `search`, `tag`, `assigned` (all|assigned|unassigned), `client_id`, `sort`, `order`, `limit`, `offset`. Returns `CallSummary[]` matching the columns the list view actually uses.
     - `GET /api/calls/{id}` — full `CallDetail` (transcript segments, tags, insights, action items, analysis, participants derived from diarization).
@@ -204,18 +204,18 @@ file_scope:
     - `DELETE /api/calls/{id}` — single delete.
     - `POST /api/calls/bulk-delete` — `{ids: [...]}` for the list-view bulk action.
     - `GET /api/calls/{id}/export` — JSON export (audio metadata + transcript + summary + tags w/ source + insights + overrides). Satisfies "downloading/exporting JSON" bonus.
-  - [ ] 5.2 Clients:
+  - [x] 5.2 Clients:
     - `GET /api/clients` — list with computed fields (`calls`, `lastCall`, `sentiment`, `arr` placeholder, `health`).
     - `POST /api/clients` — name (required), industry, owner.
     - `GET /api/clients/{id}` — detail + recent calls.
-  - [ ] 5.3 Tags:
+  - [x] 5.3 Tags:
     - `GET /api/tags` — full taxonomy (`ALL_TAGS` source).
-  - [ ] 5.4 Dashboard:
+  - [x] 5.4 Dashboard:
     - `GET /api/dashboard` — KPIs (calls this week + delta, avg sentiment + delta, conversion rate placeholder, talk:listen ratio), `sentimentTrend` (12 weeks), `callsPerDay` (14 days), `pipeline` (stage counts), `topPainPoints` (aggregated from `Insight` rows where kind=pain-point, weighted), `topPerformers` (placeholder until owner-tracking is real). Spec everything aggregable; mock the placeholders behind the same shape.
-  - [ ] 5.5 Static taxonomy endpoints (`emotions`, `highlight_types`, `tag_colors`) — return the same data the frontend currently has hard-coded, so the frontend can drop its hardcoded copies.
-  - [ ] 5.6 Error model: every endpoint returns `{"error": {"code", "message", "details"}}` on 4xx/5xx. Custom exception handlers for `ValidationError`, `IntegrityError`, our own `DomainError`.
-  - [ ] 5.7 OpenAPI: every endpoint has `summary`, `description`, `response_model`, example payloads.
-  - [ ] 5.8 **Optional cost-protection middleware (env-gated, OFF locally, ON when deployed):**
+  - [x] 5.5 Static taxonomy endpoints (`emotions`, `highlight_types`, `tag_colors`) — return the same data the frontend currently has hard-coded, so the frontend can drop its hardcoded copies.
+  - [x] 5.6 Error model: every endpoint returns `{"error": {"code", "message", "details"}}` on 4xx/5xx. Custom exception handlers for `ValidationError`, `IntegrityError`, our own `DomainError`.
+  - [x] 5.7 OpenAPI: every endpoint has `summary`, `description`, `response_model`, example payloads.
+  - [x] 5.8 **Optional cost-protection middleware (env-gated, OFF locally, ON when deployed):**
     - `AUTH_ENABLED=false` (default) → all middlewares below are no-ops; reviewer runs `make up` and uploads with zero friction.
     - When `AUTH_ENABLED=true`:
       - **API-key check** (`X-API-Key` header) on every `/api/*` route except `/health`. Key from `API_KEY` env var, compared with `secrets.compare_digest`. Frontend reads `VITE_API_KEY` at build time and attaches the header automatically via the `api/client.ts` wrapper.
@@ -225,9 +225,9 @@ file_scope:
     - All four levers are independent — `BudgetGuard` and rate-limiter run even if `AUTH_ENABLED=false` *if* their env vars are set, so you can budget-cap a local run for safety without API-key friction.
     - Tests: one pytest each for (a) missing API key → 401, (b) budget exceeded → 429, (c) rate limit exceeded → 429, (d) all middlewares off when `AUTH_ENABLED=false`.
 - **Definition of Done (DoD):**
-  - [ ] Every entry in the **Frontend ↔ Backend audit table** below has a matching endpoint that returns the right shape.
-  - [ ] `pytest backend/tests/api/` covers: upload happy-path, upload rejects bad extension, upload rejects oversized, list with each filter combination, detail returns 404 for missing call, tag override flips `source`, bulk-delete, JSON export.
-  - [ ] `/docs` (Swagger UI) renders every endpoint with examples.
+  - [x] Every entry in the **Frontend ↔ Backend audit table** below has a matching endpoint that returns the right shape.
+  - [x] `pytest backend/tests/api/` covers: upload happy-path, upload rejects bad extension, upload rejects oversized, list with each filter combination, detail returns 404 for missing call, tag override flips `source`, bulk-delete, JSON export.
+  - [x] `/docs` (Swagger UI) renders every endpoint with examples.
 
 #### Frontend ↔ Backend audit table
 

@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import secrets
 from datetime import UTC, date, datetime
+from functools import lru_cache
 
+import redis.asyncio as aioredis
 from fastapi import Request
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -45,8 +47,9 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         if request.method != "POST" or request.url.path != "/api/calls":
             return await call_next(request)
 
-        redis = _get_redis_client()
-        if redis is None:
+        try:
+            redis = _get_redis_client()
+        except Exception:
             return await call_next(request)
 
         client_ip = request.client.host if request.client else "unknown"
@@ -69,13 +72,9 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         return await call_next(request)
 
 
-def _get_redis_client():
-    """Lazy singleton redis async client. Returns None if REDIS_URL not set."""
-    import redis.asyncio as aioredis
-    try:
-        return aioredis.from_url(settings.REDIS_URL, decode_responses=True)
-    except Exception:
-        return None
+@lru_cache(maxsize=1)
+def _get_redis_client() -> aioredis.Redis:
+    return aioredis.from_url(settings.REDIS_URL, decode_responses=True)
 
 
 async def check_budget() -> None:
@@ -84,12 +83,10 @@ async def check_budget() -> None:
     if daily_budget <= 0:
         return
 
-    import redis.asyncio as aioredis
     try:
-        r = aioredis.from_url(settings.REDIS_URL, decode_responses=True)
+        r = _get_redis_client()
         today = date.today().isoformat()
         raw = await r.get(f"spend:{today}")
-        await r.aclose()
         spent = float(raw) if raw else 0.0
     except Exception:
         # Redis unavailable — fail open

@@ -180,6 +180,44 @@ async def test_call_status(client: AsyncClient) -> None:
 
 
 @pytest.mark.anyio
+async def test_tag_override_replaces_llm_tags(client: AsyncClient, db_session) -> None:
+    """PATCH /calls/{id}/tags must wipe existing LLM tags and replace with user-supplied ones."""
+    from app.models.tag import CallTag, Tag
+
+    # Upload a call
+    audio = b"\xff\xfb" + b"\x00" * 50
+    upload_resp = await client.post(
+        "/api/calls", data={"title": "Tag Replace Test"},
+        files={"file": ("tr.mp3", __import__("io").BytesIO(audio), "audio/mpeg")},
+    )
+    call_id = upload_resp.json()["call_id"]
+
+    # Seed an LLM-sourced tag directly in the DB
+    llm_tag = Tag(name="llm-discovery", is_system=False)
+    user_tag = Tag(name="user-follow-up", is_system=False)
+    db_session.add(llm_tag)
+    db_session.add(user_tag)
+    await db_session.flush()
+
+    db_session.add(CallTag(call_id=call_id, tag_id=llm_tag.id, source="llm"))
+    await db_session.commit()
+
+    # Override with user tag (different from the LLM one)
+    patch_resp = await client.patch(
+        f"/api/calls/{call_id}/tags", json={"tag_ids": [user_tag.id]}
+    )
+    assert patch_resp.status_code == 200
+
+    data = patch_resp.json()
+    tag_names = [t["name"] for t in data["tags"]]
+    tag_sources = [t["source"] for t in data["tags"]]
+
+    assert "llm-discovery" not in tag_names, "LLM tag must be removed after override"
+    assert "user-follow-up" in tag_names, "User tag must be present after override"
+    assert all(s == "user" for s in tag_sources), "All tags after override must have source='user'"
+
+
+@pytest.mark.anyio
 async def test_delete_call(client: AsyncClient) -> None:
     audio = b"\xff\xfb" + b"\x00" * 50
     upload_resp = await client.post("/api/calls", data={"title": "Delete Me"}, files={"file": ("dm.mp3", io.BytesIO(audio), "audio/mpeg")})

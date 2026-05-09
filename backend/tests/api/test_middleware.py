@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import io
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from httpx import AsyncClient
@@ -25,11 +25,8 @@ async def test_auth_disabled_passes_without_key(client: AsyncClient) -> None:
 @pytest.mark.anyio
 async def test_auth_enabled_missing_key_returns_401() -> None:
     """When AUTH_ENABLED=True and no key provided, APIKeyMiddleware rejects with 401."""
-    from unittest.mock import AsyncMock
-    from starlette.testclient import TestClient
     from starlette.requests import Request
     from app.api.middleware import APIKeyMiddleware
-    import app.api.middleware as mw_module
     import app.core.config as config_module
 
     original_auth = config_module.settings.AUTH_ENABLED
@@ -132,6 +129,86 @@ async def test_budget_exceeded_returns_429(client: AsyncClient) -> None:
         assert resp.json()["error"]["code"] == "budget_exceeded"
     finally:
         fastapi_app.dependency_overrides.pop(check_budget, None)
+
+
+@pytest.mark.anyio
+async def test_options_request_bypasses_auth() -> None:
+    """OPTIONS (CORS preflight) must pass through even when AUTH_ENABLED=True and no key."""
+    from starlette.requests import Request
+    from starlette.responses import Response
+    from app.api.middleware import APIKeyMiddleware
+    import app.core.config as config_module
+
+    original_auth = config_module.settings.AUTH_ENABLED
+    original_key = config_module.settings.API_KEY
+    config_module.settings.AUTH_ENABLED = True
+    config_module.settings.API_KEY = "secret-test-key"
+
+    try:
+        mw = APIKeyMiddleware(app=None)  # type: ignore[arg-type]
+
+        scope = {
+            "type": "http",
+            "method": "OPTIONS",
+            "path": "/api/calls",
+            "query_string": b"",
+            "headers": [],  # No API key provided
+        }
+        request = Request(scope)
+
+        call_next_called = False
+
+        async def call_next(req):
+            nonlocal call_next_called
+            call_next_called = True
+            return Response("ok", status_code=200)
+
+        response = await mw.dispatch(request, call_next)
+        assert response.status_code == 200
+        assert call_next_called, "OPTIONS request must bypass auth and call call_next"
+    finally:
+        config_module.settings.AUTH_ENABLED = original_auth
+        config_module.settings.API_KEY = original_key
+
+
+@pytest.mark.anyio
+async def test_auth_enabled_wrong_key_returns_401() -> None:
+    """When AUTH_ENABLED=True and a wrong key is provided, APIKeyMiddleware rejects with 401."""
+    from starlette.requests import Request
+    from app.api.middleware import APIKeyMiddleware
+    import app.core.config as config_module
+
+    original_auth = config_module.settings.AUTH_ENABLED
+    original_key = config_module.settings.API_KEY
+    config_module.settings.AUTH_ENABLED = True
+    config_module.settings.API_KEY = "secret-test-key"
+
+    try:
+        mw = APIKeyMiddleware(app=None)  # type: ignore[arg-type]
+
+        scope = {
+            "type": "http",
+            "method": "GET",
+            "path": "/api/tags",
+            "query_string": b"",
+            "headers": [(b"x-api-key", b"wrong-key")],
+        }
+        request = Request(scope)
+
+        call_next_called = False
+
+        async def call_next(req):
+            nonlocal call_next_called
+            call_next_called = True
+            from starlette.responses import Response
+            return Response("ok", status_code=200)
+
+        response = await mw.dispatch(request, call_next)
+        assert response.status_code == 401
+        assert not call_next_called
+    finally:
+        config_module.settings.AUTH_ENABLED = original_auth
+        config_module.settings.API_KEY = original_key
 
 
 @pytest.mark.anyio

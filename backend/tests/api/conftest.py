@@ -87,3 +87,11 @@ async def client(tmp_path) -> AsyncGenerator[AsyncClient, None]:
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.drop_all)
     await engine.dispose()
+
+
+@pytest_asyncio.fixture(scope="function")
+async def db_session(client) -> AsyncGenerator[AsyncSession, None]:
+    """Yield an AsyncSession using the same in-memory DB as the test client."""
+    override = app.dependency_overrides[get_session]
+    async for session in override():
+        yield session

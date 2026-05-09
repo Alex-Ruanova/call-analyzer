@@ -5,9 +5,7 @@ from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db import get_session
-from app.models.analysis import Analysis
 from app.models.call import Call
-from app.models.insight import Insight
 from app.schemas.dashboard import (
     DailyCallsPoint,
     DashboardOut,

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import subprocess
 import tempfile
 from datetime import date
@@ -24,9 +25,11 @@ from app.llm.schemas.tags import TagSuggestion
 from app.models.analysis import Analysis
 from app.models.call import Call
 from app.models.insight import ActionItem, Insight
-from app.models.tag import CallTag, Tag
+from app.models.tag import Tag
 from app.models.transcript import Transcript, TranscriptSegment
-from app.providers.base import DiarizedSegment, DiarizedTranscript, LLMProvider, LLMUsage, STTProvider
+from app.providers.base import DiarizedSegment, DiarizedTranscript, LLMProvider, STTProvider
+
+logger = logging.getLogger(__name__)
 
 _BUCKET_LUA = """
 local key_tokens = KEYS[1]
@@ -41,8 +44,8 @@ local refilled = math.min(capacity, tokens + elapsed * refill_rate)
 if refilled < 1 then
     return 0
 end
-redis.call('set', key_tokens, refilled - 1)
-redis.call('set', key_ts, now)
+redis.call('set', key_tokens, refilled - 1, 'EX', 3600)
+redis.call('set', key_ts, now, 'EX', 3600)
 return 1
 """
 
@@ -73,7 +76,7 @@ class RedisBucket:
     async def acquire(self, tokens: int = 1) -> None:
         while True:
             sha = await self._get_sha()
-            now = asyncio.get_event_loop().time()
+            now = asyncio.get_running_loop().time()
             result = await self._redis.evalsha(
                 sha,
                 2,
@@ -170,12 +173,12 @@ async def _transcribe_chunked(
 
         async def _transcribe_one(
             start: float, end: float, idx: int
-        ) -> tuple[float, DiarizedTranscript]:
+        ) -> tuple[float, DiarizedTranscript, float]:
             chunk_path = Path(tmp_dir) / f"chunk_{idx}.mp3"
             _split_audio(audio_path, start, end, chunk_path)
             async with sem:
                 result = await stt_provider.transcribe(chunk_path, language)
-            return start, result.transcript
+            return start, result.transcript, result.usage.cost_usd
 
         tasks = [
             _transcribe_one(start, end, i)
@@ -183,10 +186,9 @@ async def _transcribe_chunked(
         ]
         results = await asyncio.gather(*tasks)
 
-        for chunk_start, diarized in results:
+        for chunk_start, diarized, chunk_cost in results:
             chunk_results.append((chunk_start, diarized))
-            # cost is not tracked per chunk here — accumulate from usage above
-            # NOTE: usage returned by gather is embedded in STTResult but we need per-call usage
+            total_cost += chunk_cost
 
     chunk_results.sort(key=lambda x: x[0])
 
@@ -241,6 +243,12 @@ def _detect_silence(audio_path: Path) -> list[float]:
         capture_output=True,
         text=True,
     )
+    if result.returncode != 0:
+        raise DomainError(
+            "stt_chunking_failed",
+            f"ffmpeg silencedetect failed (rc={result.returncode}): {result.stderr[:200]}",
+            502,
+        )
     boundaries: list[float] = []
     for line in result.stderr.splitlines():
         if "silence_end" in line:
@@ -317,7 +325,6 @@ async def _reanchor_speakers(
     chunk_results: list[tuple[float, DiarizedTranscript]],
     llm_provider: LLMProvider,
 ) -> tuple[list[DiarizedSegment], float]:
-    from app.llm.schemas.mood import MoodLabels  # just for import pattern; we use a custom schema
 
     from pydantic import BaseModel
 
@@ -365,7 +372,8 @@ async def _reanchor_speakers(
                 )
             )
         return remapped, result.usage.cost_usd
-    except Exception:
+    except Exception as exc:
+        logger.warning("Speaker re-anchoring failed, keeping original labels: %s", exc)
         return segments, 0.0
 
 
@@ -430,7 +438,12 @@ async def tag_stage(
             prompt, TagSuggestion, settings.LLM_MODEL_TAGGING
         )
         cost = llm_result.usage.cost_usd
-        tag_names: list[str] = llm_result.parsed.tags
+        all_tag_names: list[str] = llm_result.parsed.tags
+        valid_taxonomy = set(tags_prompts.TAG_TAXONOMY)
+        tag_names = [t for t in all_tag_names if t in valid_taxonomy]
+        if len(tag_names) < len(all_tag_names):
+            dropped = set(all_tag_names) - valid_taxonomy
+            logger.warning("tag_stage: dropped %d out-of-taxonomy tags: %s", len(dropped), dropped)
 
         for tag_name in tag_names:
             tag_stmt = select(Tag).where(Tag.name == tag_name)

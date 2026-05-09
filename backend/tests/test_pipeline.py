@@ -13,7 +13,6 @@ os.environ.setdefault("REDIS_URL", "redis://localhost:6379/0")
 os.environ.setdefault("OPENAI_API_KEY", "sk-fake-key-for-tests")
 os.environ.setdefault("AUDIO_STORAGE_DIR", "/tmp/test-audio")
 
-import asyncio
 from pathlib import Path
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
@@ -33,25 +32,25 @@ def _jsonb_sqlite(type_: Any, compiler: Any, **kw: Any) -> str:
     return "JSON"
 
 
-from app.core.db import Base
-from app.core.errors import DomainError
-from app.llm.schemas.insights import ExtractedActionItem, ExtractedInsight, InsightExtraction
-from app.llm.schemas.mood import MoodLabels, SegmentMood
-from app.llm.schemas.synthesis import Synthesis
-from app.llm.schemas.tags import TagSuggestion
-from app.models.analysis import Analysis
-from app.models.call import Call
-from app.models.insight import Insight
-from app.models.tag import CallTag
-from app.models.transcript import Transcript, TranscriptSegment
-from app.providers.base import (
+from app.core.db import Base  # noqa: E402
+from app.core.errors import DomainError  # noqa: E402
+from app.llm.schemas.insights import ExtractedActionItem, ExtractedInsight, InsightExtraction  # noqa: E402
+from app.llm.schemas.mood import MoodLabels, SegmentMood  # noqa: E402
+from app.llm.schemas.synthesis import Synthesis  # noqa: E402
+from app.llm.schemas.tags import TagSuggestion  # noqa: E402
+from app.models.analysis import Analysis  # noqa: E402
+from app.models.call import Call  # noqa: E402
+from app.models.insight import Insight  # noqa: E402
+from app.models.tag import CallTag  # noqa: E402
+from app.models.transcript import Transcript, TranscriptSegment  # noqa: E402
+from app.providers.base import (  # noqa: E402
     DiarizedSegment,
     DiarizedTranscript,
     LLMResult,
     LLMUsage,
     STTResult,
 )
-from app.tasks.process_call import _run_pipeline
+from app.tasks.process_call import _run_pipeline  # noqa: E402
 
 
 # ---------------------------------------------------------------------------
@@ -83,6 +82,17 @@ class FakeSTTProvider:
 class FakeSTTProviderFailure:
     async def transcribe(self, path: Path, language: str | None = None) -> STTResult:
         raise DomainError("stt_error", "Fake STT failure", 500)
+
+
+class FakeLLMProviderFailure:
+    async def complete_structured(
+        self,
+        prompt: str,
+        schema: type,
+        model: str,
+        system_prompt: str | None = None,
+    ) -> LLMResult:
+        raise DomainError("llm_error", "Fake LLM failure", 500)
 
 
 class FakeLLMProvider:
@@ -123,7 +133,6 @@ class FakeLLMProvider:
                 overall_sentiment="positive",
             )
         else:
-            from pydantic import BaseModel
             parsed = schema()  # type: ignore[call-arg]
 
         return LLMResult(
@@ -345,3 +354,80 @@ async def test_llm_model_env_override(db_session_factory, call_row, tmp_path, mo
     assert len(tag_calls) >= 1
     _, _, model_used = tag_calls[0]
     assert model_used == "gpt-4.1-mini", f"Expected 'gpt-4.1-mini', got '{model_used}'"
+
+
+@pytest.mark.asyncio
+async def test_status_transitions(db_session_factory, call_row, tmp_path, monkeypatch):
+    """Status must progress: transcribing → analyzing → done (in that order)."""
+    audio_dir = _make_audio_file(tmp_path)
+    monkeypatch.setattr("app.core.config.settings.AUDIO_STORAGE_DIR", str(audio_dir))
+
+    fake_stt = FakeSTTProvider()
+    fake_llm = FakeLLMProvider()
+    redis_mock = _make_fake_redis()
+    bucket = _make_fake_bucket()
+
+    recorded_statuses: list[str] = []
+
+    async def recording_set_status(session_factory, call_id, status, error_message=None):
+        recorded_statuses.append(status)
+        from app.tasks import process_call as pc_module
+        await pc_module._real_set_status(session_factory, call_id, status, error_message)
+
+    import app.tasks.process_call as pc_module
+
+    # Save the original and patch
+    pc_module._real_set_status = pc_module._set_status
+    monkeypatch.setattr("app.tasks.process_call._set_status", recording_set_status)
+
+    await _run_pipeline(
+        call_id=call_row,
+        session_factory=db_session_factory,
+        redis_client=redis_mock,
+        stt_provider=fake_stt,
+        llm_provider=fake_llm,
+        bucket=bucket,
+        task_self=MagicMock(),
+    )
+
+    assert recorded_statuses == ["transcribing", "analyzing", "done"], (
+        f"Unexpected status sequence: {recorded_statuses}"
+    )
+
+
+@pytest.mark.asyncio
+async def test_llm_failure_sets_failed_status(db_session_factory, call_row, tmp_path, monkeypatch):
+    """A DomainError from any LLM stage must set status=failed and leave no Analysis row."""
+    audio_dir = _make_audio_file(tmp_path)
+    monkeypatch.setattr("app.core.config.settings.AUDIO_STORAGE_DIR", str(audio_dir))
+
+    fake_stt = FakeSTTProvider()
+    fake_llm = FakeLLMProviderFailure()
+    redis_mock = _make_fake_redis()
+    bucket = _make_fake_bucket()
+
+    await _run_pipeline(
+        call_id=call_row,
+        session_factory=db_session_factory,
+        redis_client=redis_mock,
+        stt_provider=fake_stt,
+        llm_provider=fake_llm,
+        bucket=bucket,
+        task_self=MagicMock(),
+    )
+
+    from sqlalchemy import select
+
+    async with db_session_factory() as session:
+        call = await session.get(Call, call_row)
+        assert call is not None
+        assert call.status == "failed", f"Expected 'failed', got '{call.status}'"
+        assert call.error_message is not None and len(call.error_message) > 0
+
+        # Transcript may or may not exist depending on which stage failed — that's fine.
+        # But no Analysis row must be present.
+        analysis_result = await session.execute(
+            select(Analysis).where(Analysis.call_id == call_row)
+        )
+        analysis = analysis_result.scalar_one_or_none()
+        assert analysis is None, "Analysis row must not exist after LLM failure"

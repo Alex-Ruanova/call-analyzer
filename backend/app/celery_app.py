@@ -8,5 +8,7 @@ celery_app.config_from_object({
     "accept_content": ["json"],
     "task_track_started": True,
     "worker_concurrency": 4,
+    "worker_pool": "prefork",
+    "worker_max_tasks_per_child": 50,
 })
 celery_app.autodiscover_tasks(["app.tasks"])

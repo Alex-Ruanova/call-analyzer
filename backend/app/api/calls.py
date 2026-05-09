@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 import hashlib
+import logging
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Annotated, Literal
+from uuid import uuid4
 
 from fastapi import APIRouter, Depends, Form, UploadFile, status
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -15,10 +18,8 @@ from app.api.middleware import check_budget
 from app.core.config import settings
 from app.core.db import get_session
 from app.core.errors import DomainError
-from app.models.analysis import Analysis
 from app.models.call import Call
 from app.models.client import Client
-from app.models.insight import ActionItem, Insight
 from app.models.tag import CallTag, Tag
 from app.models.transcript import Transcript
 from app.schemas.call import (
@@ -33,11 +34,13 @@ from app.schemas.call import (
     TranscriptSegmentOut,
 )
 from app.schemas.tag import TagOut
+from app.tasks.process_call import process_call
 
-try:
-    from app.tasks.process_call import process_call  # TODO: Phase 4
-except ImportError:
-    process_call = None  # type: ignore[assignment]
+logger = logging.getLogger(__name__)
+
+
+class BulkDeleteRequest(BaseModel):
+    ids: list[int]
 
 router = APIRouter()
 
@@ -62,8 +65,7 @@ _ALLOWED_EXTENSIONS = {".mp3", ".wav"}
 _ALLOWED_CONTENT_TYPES = {"audio/mpeg", "audio/wav", "audio/x-wav", "audio/mp3"}
 
 
-async def _load_call_detail(call_id: int, session: AsyncSession) -> Call:
-    """Load a Call with all related data for detail responses."""
+async def _load_call_detail(call_id: int, session: AsyncSession) -> Call | None:
     result = await session.execute(
         select(Call)
         .where(Call.id == call_id)
@@ -75,7 +77,7 @@ async def _load_call_detail(call_id: int, session: AsyncSession) -> Call:
             selectinload(Call.transcript).selectinload(Transcript.segments),
         )
     )
-    return result.scalar_one_or_none()  # type: ignore[return-value]
+    return result.scalar_one_or_none()
 
 
 def _call_to_detail(call: Call, client_name: str | None = None) -> CallDetail:
@@ -143,10 +145,10 @@ def _call_to_detail(call: Call, client_name: str | None = None) -> CallDetail:
     responses={200: {"description": "Number of deleted calls"}},
 )
 async def bulk_delete_calls(
-    body: dict,
+    body: BulkDeleteRequest,
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> JSONResponse:
-    ids: list[int] = body.get("ids", [])
+    ids = body.ids
     if not ids:
         return JSONResponse(content={"deleted": 0})
 
@@ -199,8 +201,6 @@ async def upload_call(
             message=f"Content type '{file.content_type}' is not accepted",
             status_code=400,
         )
-
-    from uuid import uuid4
 
     dest_filename = f"{uuid4()}{ext}"
     dest_path = Path(settings.AUDIO_STORAGE_DIR) / dest_filename
@@ -266,14 +266,15 @@ async def upload_call(
     await session.commit()
     await session.refresh(call)
 
-    # Enqueue processing task (Phase 4)
-    if process_call is not None:
-        try:
-            task = process_call.delay(call.id)
-            call.celery_task_id = task.id
-            await session.commit()
-        except Exception:
-            pass  # Task queuing failure is non-fatal at upload time
+    try:
+        task = process_call.delay(call.id)
+        call.celery_task_id = task.id
+        await session.commit()
+    except Exception as exc:
+        logger.error("Failed to enqueue process_call for call %s: %s", call.id, exc)
+        call.status = "failed"
+        call.error_message = f"Failed to enqueue: {str(exc)[:400]}"
+        await session.commit()
 
     return JSONResponse(status_code=202, content={"call_id": call.id})
 
@@ -320,56 +321,52 @@ async def list_calls(
     stmt = stmt.order_by(sort_col.asc() if order == "asc" else sort_col.desc())
     stmt = stmt.offset(offset).limit(limit)
 
+    # Eager-load tags for all matching calls in one query
+    stmt = stmt.options(
+        selectinload(Call.call_tags).selectinload(CallTag.tag),
+        selectinload(Call.analysis),
+    )
     result = await session.execute(stmt)
     calls = result.scalars().unique().all()
 
-    # Build summaries with joined data
+    if not calls:
+        return []
+
+    # Bulk-fetch client names in one query
+    client_ids = [c.client_id for c in calls if c.client_id is not None]
+    client_names: dict[int, str] = {}
+    if client_ids:
+        cn_rows = await session.execute(
+            select(Client.id, Client.name).where(Client.id.in_(client_ids))
+        )
+        client_names = dict(cn_rows.fetchall())
+
     summaries = []
     for call in calls:
-        # Get client name
-        client_name: str | None = None
-        if call.client_id:
-            cn_row = await session.execute(
-                select(Client.name).where(Client.id == call.client_id)
-            )
-            client_name = cn_row.scalar()
-
-        # Get analysis cost
-        cost_row = await session.execute(
-            select(Analysis.cost_usd_total).where(Analysis.call_id == call.id)
-        )
-        cost_usd_total = cost_row.scalar()
-
-        # Get tags
-        tag_rows = await session.execute(
-            select(CallTag, Tag)
-            .join(Tag, Tag.id == CallTag.tag_id)
-            .where(CallTag.call_id == call.id)
-        )
         tags = [
             TagOut(
-                id=t.id,
-                name=t.name,
-                color=t.color,
-                is_system=t.is_system,
+                id=ct.tag.id,
+                name=ct.tag.name,
+                color=ct.tag.color,
+                is_system=ct.tag.is_system,
                 source=ct.source,
             )
-            for ct, t in tag_rows.fetchall()
+            for ct in call.call_tags
         ]
-
+        cost_usd_total = (
+            float(call.analysis.cost_usd_total) if call.analysis else None
+        )
         summaries.append(
             CallSummary(
                 id=call.id,
                 title=call.title,
                 status=call.status,
                 client_id=call.client_id,
-                client_name=client_name,
+                client_name=client_names.get(call.client_id) if call.client_id else None,
                 created_at=call.created_at,
                 duration_seconds=call.duration_seconds,
                 tags=tags,
-                cost_usd_total=(
-                    float(cost_usd_total) if cost_usd_total is not None else None
-                ),
+                cost_usd_total=cost_usd_total,
             )
         )
 
