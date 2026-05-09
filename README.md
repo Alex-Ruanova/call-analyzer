@@ -122,6 +122,11 @@ stt = DeepgramSTT(model="nova-2")
 
 **Cost tracking:** Every LLM/STT call logs `cost_usd` to `Analysis.cost_usd_breakdown`. Frontend displays per-call cost. Budget cap on `DAILY_BUDGET_USD` prevents overspend.
 
+**Data lifecycle:**
+
+- The audio file is stored to disk on upload and **deleted right after the call reaches `status=done`**. The transcript + analysis in Postgres carry everything downstream features need. Reduces disk pressure and PII footprint; the trade-off is that re-running STT on an existing call is not possible without re-uploading.
+- Calls are **soft-deleted** (`Call.deleted_at`). User-facing endpoints (list, detail, dedup-on-upload) filter them out. The dashboard splits by intent: cost and volume KPIs keep the soft-deleted rows (the OpenAI bill is real), quality KPIs (Positive rate, Talk:Listen, sentiment trend) hide them. Full lifecycle in [docs/architecture-and-scale.md](docs/architecture-and-scale.md#data-lifecycle).
+
 ---
 
 ## What I'd Add With More Time
@@ -175,6 +180,7 @@ make psql
 ## Known Limitations
 
 - **No auth in MVP** — API key is optional; frontend embeds it. Budget cap + rate limiting provide cost protection; true multi-tenancy requires OAuth2 + row-level filters.
-- **Local audio storage** — Survives container restart but not cluster failover. Production needs S3.
+- **Local audio storage** — Survives container restart but not cluster failover. Production needs S3. Audio is also deleted right after each call finishes processing (see Data lifecycle above), so the disk only holds in-flight uploads.
+- **No restore for deleted calls** — Soft delete is a one-way trip from the UI. Recovering a deleted call requires `UPDATE calls SET deleted_at = NULL` in psql. Acceptable for a single-user MVP; production should add an N-second undo window.
 - **Polling, not WebSocket** — Frontend polls every 1.5s while a call is processing. Real-time via Redis pub/sub + SSE is next (see `docs/improvements.md`).
 - **Synchronous provider calls** — All STT/LLM calls block the worker. Async httpx client is in place; edge case of a stalled OpenAI request blocks 1/4 worker slots for up to 60s.

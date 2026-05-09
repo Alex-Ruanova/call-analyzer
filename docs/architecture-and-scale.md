@@ -12,9 +12,23 @@
 8. **Insights stage** → Full transcript → gpt-4o-mini → `InsightExtraction` (pain points, objections, buying signals, next steps, timeline, budget). Logs cost.
 9. **Synthesis stage** → Full transcript + prior outputs → gpt-4o-mini → `Synthesis` (headline, summary, sentiment). Logs cost.
 10. **Finalize** → Worker aggregates costs, writes `Analysis` row. Updates `Call.status = "done"`. Updates `Call.updated_at`.
-11. **Poll** → Frontend polls `/api/calls/{id}/status` every 2s. Sees status=`done`, fetches full call data (transcript, tags, insights, synthesis).
+11. **Audio cleanup** → Worker deletes `storage/audio/<uuid>.wav` immediately after the call reaches `done`. The transcript in Postgres carries everything downstream features consume. `Call.filename` is kept as a historical reference but the file is gone — reduces disk pressure and PII footprint.
+12. **Poll** → Frontend polls `/api/calls/{id}/status` every 1.5s. Sees status=`done`, fetches full call data (transcript, tags, insights, synthesis).
 
 **Total latency (5-min call):** ~30–50s (STT dominates; LLM stages ~1s each).
+
+---
+
+## Data lifecycle
+
+- **Audio file**: written to local disk at upload, deleted immediately after the call's pipeline reaches `status='done'` (step 11 above). A failed call retains its audio so it can be inspected; an explicit user delete removes whatever is left.
+- **Calls**: soft-deleted, never hard-deleted. `DELETE /api/calls/{id}` and bulk-delete stamp `Call.deleted_at`. The row plus its `Analysis` / `Transcript` / `Insight` / `ActionItem` / `Participant` children stay in the database.
+- **Why**: cost paid to OpenAI is real and not refundable. If hard-delete dropped `Analysis`, the dashboard's `Total cost` and `Calls this week` would silently lie about historical spend and volume. Soft-delete keeps the audit trail intact.
+- **What user-facing endpoints see**: nothing soft-deleted. Lists, detail, client view, and the upload-dedup query all filter `WHERE deleted_at IS NULL`. The user perceives the call as gone.
+- **What dashboard sees**: split by intent. Cost / volume queries (`Total cost`, `Calls this week`, `Calls per day`) include soft-deleted rows — the user paid, the activity occurred. Quality queries (`Positive rate`, `Talk:Listen`, `sentiment_trend`, `pipeline`, `top_pain_points`) drop them — "this call doesn't represent my flow anymore" is a legitimate user signal.
+- **Restore**: not implemented. To undo a deletion today, run SQL: `UPDATE calls SET deleted_at = NULL WHERE id = ?`. Acceptable for a single-user MVP.
+- **Future GC**: no scheduled purge of long-soft-deleted rows. In production a job that hard-deletes rows older than e.g. 1 year is reasonable.
+- **Future re-STT**: because audio is dropped at `done`, any future "reanalyze with a new STT provider" feature would need to switch this from immediate delete to TTL (e.g. keep 30 days). See `docs/improvements.md` #8.
 
 ---
 
