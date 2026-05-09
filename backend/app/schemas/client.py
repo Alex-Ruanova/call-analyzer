@@ -2,6 +2,8 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict
 
+from app.schemas.call import CallSummary
+
 
 class ClientCreate(BaseModel):
     name: str
@@ -20,3 +22,7 @@ class ClientOut(BaseModel):
     calls: int = 0
     last_call: datetime | None = None
     sentiment: str | None = None
+
+
+class ClientDetail(ClientOut):
+    recent_calls: list[CallSummary] = []

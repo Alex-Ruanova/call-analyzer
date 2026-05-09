@@ -51,14 +51,6 @@ class ActionItemOut(BaseModel):
     done: bool
 
 
-class CostBreakdown(BaseModel):
-    stt: float = 0.0
-    mood: float = 0.0
-    tags: float = 0.0
-    insights: float = 0.0
-    synthesis: float = 0.0
-
-
 class AnalysisOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -68,7 +60,7 @@ class AnalysisOut(BaseModel):
     talk_ratio_rep: float
     talk_ratio_client: float
     llm_model_used: str
-    cost_usd_breakdown: CostBreakdown
+    cost_usd_breakdown: dict[str, float]
     cost_usd_total: float
 
 
