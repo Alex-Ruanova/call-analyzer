@@ -19,11 +19,12 @@ class OpenAISTT:
         self, audio_path: Path, language: str | None = None
     ) -> STTResult:
         with audio_path.open("rb") as f:
-            response = await self._client.audio.transcriptions.create(  # type: ignore[call-overload]
+            response = await self._client.audio.transcriptions.create(
                 model=self._model,
                 file=f,
                 response_format="diarized_json",
                 language=language,
+                chunking_strategy="auto",
             )
 
         if not hasattr(response, "model_dump"):

@@ -12,7 +12,7 @@ from __future__ import annotations
 import asyncio
 import os
 import sys
-from datetime import date, datetime, timedelta, UTC
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 
 # Ensure app is importable when running from repo root
@@ -54,7 +54,7 @@ TAGS_DATA = [
     {"name": "renewal", "color": "#6366f1", "is_system": False},
 ]
 
-now = datetime.now(UTC)
+now = datetime.utcnow()
 
 CALLS_DATA = [
     {

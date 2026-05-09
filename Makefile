@@ -7,7 +7,7 @@ down:
 	docker compose down
 
 migrate:
-	docker compose exec api python -m alembic upgrade head
+	docker compose exec api python -m alembic -c alembic/alembic.ini upgrade head
 
 seed:
 	docker compose exec api python /app/scripts/seed.py

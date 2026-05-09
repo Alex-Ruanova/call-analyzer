@@ -49,7 +49,27 @@ except ImportError:
     default_retry_delay=30,
 )
 def process_call(self, call_id: int) -> None:
-    asyncio.run(_run(self, call_id))
+    try:
+        asyncio.run(_run(self, call_id))
+    except Exception as exc:
+        # Guarantee status=failed is written even if _run_pipeline's own handler didn't fire
+        logger.error("process_call(%s) unhandled exception: %s", call_id, exc, exc_info=True)
+        _mark_failed_sync(call_id, str(exc)[:500])
+        raise
+
+
+def _mark_failed_sync(call_id: int, message: str) -> None:
+    async def _do() -> None:
+        engine = create_async_engine(settings.DATABASE_URL, poolclass=NullPool)
+        factory = async_sessionmaker(engine, expire_on_commit=False)
+        try:
+            await _set_status(factory, call_id, "failed", message)
+        finally:
+            await engine.dispose()
+    try:
+        asyncio.run(_do())
+    except Exception:
+        logger.exception("Could not mark call %s as failed after task crash", call_id)
 
 
 async def _run(task_self: object, call_id: int) -> None:

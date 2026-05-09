@@ -4,6 +4,7 @@ RUN pip install uv
 COPY backend/pyproject.toml backend/uv.lock ./
 RUN uv sync --frozen --no-dev
 COPY backend/ .
+COPY scripts/ ./scripts/
 ENV PYTHONPATH=/app
 ENV AUDIO_STORAGE_DIR=/app/storage/audio
 ENV PATH="/app/.venv/bin:$PATH"

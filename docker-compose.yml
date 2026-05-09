@@ -62,7 +62,7 @@ services:
       context: frontend
       dockerfile: Dockerfile
       args:
-        VITE_API_BASE_URL: /api
+        VITE_API_BASE_URL: ""
     ports:
       - "5173:80"
     depends_on:

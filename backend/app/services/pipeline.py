@@ -174,7 +174,7 @@ async def _transcribe_chunked(
         async def _transcribe_one(
             start: float, end: float, idx: int
         ) -> tuple[float, DiarizedTranscript, float]:
-            chunk_path = Path(tmp_dir) / f"chunk_{idx}.mp3"
+            chunk_path = Path(tmp_dir) / f"chunk_{idx}{audio_path.suffix}"
             _split_audio(audio_path, start, end, chunk_path)
             async with sem:
                 result = await stt_provider.transcribe(chunk_path, language)

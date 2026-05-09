@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { useClients, useCreateCall } from "../api/hooks";
+import { useClients, useCreateCall, useCreateClient } from "../api/hooks";
 import { Icons } from "../components/components";
 import { NewClientModal } from "./ClientsScreen";
 import type { Client } from "../types";
@@ -31,7 +31,6 @@ export default function UploadScreen() {
   const [clientFilter, setClientFilter] = useState("");
   const [showNewClient, setShowNewClient] = useState(false);
   const [newClient, setNewClient] = useState<NewClientState>({ name: "", industry: "", owner: "" });
-  const [extraClients, setExtraClients] = useState<Client[]>([]);
   const [processing, setProcessing] = useState(false);
   const [pct, setPct] = useState(0);
   const [step, setStep] = useState(0);
@@ -39,7 +38,7 @@ export default function UploadScreen() {
   const inputRef = useRef<HTMLInputElement>(null);
   const pickerRef = useRef<HTMLDivElement>(null);
 
-  const allClients: Client[] = [...(clientsData ?? []), ...extraClients];
+  const allClients: Client[] = clientsData ?? [];
 
   // Pre-set client from URL param
   useEffect(() => {
@@ -77,21 +76,29 @@ export default function UploadScreen() {
     clientFilter.trim() &&
     !allClients.some((c) => c.name.toLowerCase() === clientFilter.trim().toLowerCase());
 
+  const createClientMutation = useCreateClient();
+
   const handleCreateClient = () => {
     if (!newClient.name.trim()) return;
-    const created: Client = {
-      id: `c-new-${Date.now()}`,
-      name: newClient.name.trim(),
-      industry: newClient.industry.trim() || null,
-      owner: newClient.owner.trim() || null,
-      calls: 0,
-      last_call: null,
-      sentiment: null,
-      health: "on-track",
-      arr: null,
-    };
-    setExtraClients((prev) => [created, ...prev]);
-    setClient(created);
+    createClientMutation.mutate(
+      { name: newClient.name.trim(), industry: newClient.industry.trim() || undefined },
+      {
+        onSuccess: (result) => {
+          // query invalidation will refresh allClients; set the selected client directly
+          setClient({
+            id: result.id,
+            name: newClient.name.trim(),
+            industry: newClient.industry.trim() || null,
+            owner: newClient.owner.trim() || null,
+            calls: 0,
+            last_call: null,
+            sentiment: null,
+            health: "on-track",
+            arr: null,
+          });
+        },
+      }
+    );
     setShowNewClient(false);
     setShowClientPicker(false);
     setNewClient({ name: "", industry: "", owner: "" });

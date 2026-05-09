@@ -11,4 +11,7 @@ celery_app.config_from_object({
     "worker_pool": "prefork",
     "worker_max_tasks_per_child": 50,
 })
-celery_app.autodiscover_tasks(["app.tasks"])
+celery_app.autodiscover_tasks(["app"])
+
+# Explicit import so the task registers even if autodiscover misses it
+import app.tasks.process_call  # noqa: E402, F401
