@@ -57,6 +57,7 @@ vi.mock("../api/hooks", () => ({
   useCall: () => ({ data: mockCallData, isLoading: !mockCallData, isError: false }),
   useTags: () => ({ data: [] }),
   useClients: () => ({ data: [] }),
+  useUpdateParticipants: () => ({ mutate: () => {} }),
 }));
 
 vi.mock("../App", () => ({

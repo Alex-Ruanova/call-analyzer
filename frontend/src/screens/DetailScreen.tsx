@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { useParams } from "react-router-dom";
-import { useCall, useCallStatus, useTags, useClients } from "../api/hooks";
+import { useCall, useCallStatus, useTags, useClients, useUpdateParticipants } from "../api/hooks";
 import { useQueryClient } from "@tanstack/react-query";
 import { useSetCrumbOverride } from "../App";
 import { Icons, EmotionDot, TagEditor, ClientPicker, getEmotion } from "../components/components";
@@ -11,6 +11,27 @@ interface DetailScreenProps {
 }
 
 const PROCESSING_STATUSES: CallStatus[] = ["pending", "transcribing", "analyzing"];
+
+const LANGUAGE_NAMES: Record<string, string> = {
+  en: "English",
+  es: "Spanish",
+  pt: "Portuguese",
+  fr: "French",
+  de: "German",
+  it: "Italian",
+  ja: "Japanese",
+  zh: "Chinese",
+  ko: "Korean",
+  ru: "Russian",
+  ar: "Arabic",
+  nl: "Dutch",
+};
+
+function formatLanguage(code: string | null): string {
+  if (!code) return "—";
+  const lower = code.toLowerCase().trim();
+  return LANGUAGE_NAMES[lower] ?? lower.toUpperCase();
+}
 
 const STATUS_STEPS: Record<CallStatus, { index: number; label: string }> = {
   pending:      { index: 0, label: "Decoding audio" },
@@ -120,6 +141,25 @@ export default function DetailScreen({ moodViz = "ribbon" }: DetailScreenProps) 
   const [clientName, setClientName] = useState<string | null | undefined>(undefined);
   const [actions, setActions] = useState<ActionItem[] | null>(null);
   const [participants, setParticipants] = useState<Participant[] | null>(null);
+  const updateParticipantsMutation = useUpdateParticipants();
+
+  // Debounced persist: when local participants edits land, push to backend after 600ms quiet.
+  useEffect(() => {
+    if (participants === null) return;
+    const t = setTimeout(() => {
+      updateParticipantsMutation.mutate({
+        callId: id,
+        participants: participants.map((p) => ({
+          speaker_label: p.speaker_label,
+          display_name: p.name || null,
+          role: p.role,
+          side: p.side,
+        })),
+      });
+    }, 600);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [participants, id]);
   const [notes, setNotes] = useState<Array<{ when: string; text: string }>>([
     { when: "Yesterday, 4:12 pm", text: "Nice handle on the Spanish objection. Worth turning into an enablement clip." },
     { when: "Yesterday, 3:48 pm", text: "Daniel's \"managers spend 4 hours\" line is gold for the case study." },
@@ -238,7 +278,15 @@ export default function DetailScreen({ moodViz = "ribbon" }: DetailScreenProps) 
             <span>·</span>
             <span>{durationStr}</span>
             <span>·</span>
-            <span>{call.language ?? "English"}</span>
+            <span>{formatLanguage(call.language)}</span>
+            {call.analysis?.cost_usd_total != null && (
+              <>
+                <span>·</span>
+                <span title="LLM + STT cost for this call" style={{ fontVariantNumeric: "tabular-nums" }}>
+                  ${call.analysis.cost_usd_total.toFixed(3)}
+                </span>
+              </>
+            )}
           </div>
 
           {/* Mood ribbon */}
@@ -577,7 +625,7 @@ function SummaryTab({ call, actions, setActions, participants, setParticipants }
       <Section icon={Icons.File} title="Transcript information" defaultOpen={false} collapsible>
         <div style={{ display: "grid", gridTemplateColumns: "auto 1fr", gap: "8px 16px", fontSize: 12.5 }}>
           <span style={{ color: "var(--text-3)" }}>Language</span>
-          <span>{call.language ?? "English"}</span>
+          <span>{formatLanguage(call.language)}</span>
           <span style={{ color: "var(--text-3)" }}>File</span>
           <span>{call.filename}</span>
           <span style={{ color: "var(--text-3)" }}>Audio</span>
@@ -706,7 +754,7 @@ function InsightsTab({ call, jumpTo }: InsightsTabProps) {
 
 function EmotionsTab({ call }: { call: NonNullable<ReturnType<typeof useCall>["data"]> }) {
   const total = Object.values(call.emotion_distribution).reduce((a, b) => a + b, 0) || 1;
-  const overallSentiment = call.overall_sentiment != null ? parseFloat(call.overall_sentiment) : 0;
+  const overallSentiment = call.sentiment_score ?? 0;
 
   const durationMin = call.duration_seconds != null ? Math.floor(call.duration_seconds / 60) : 0;
   const durationSec = call.duration_seconds != null ? call.duration_seconds % 60 : 0;

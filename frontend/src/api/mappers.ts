@@ -76,6 +76,8 @@ export interface BackendCallSummary {
   duration_seconds: number | null;
   tags: BackendTagOut[];
   cost_usd_total: number | null;
+  overall_sentiment: string | null;
+  sentiment_score: number | null;
 }
 
 export interface BackendCallDetail {
@@ -96,6 +98,15 @@ export interface BackendCallDetail {
   action_items: BackendActionItemOut[];
   analysis: BackendAnalysisOut | null;
   error_message: string | null;
+  sentiment_score: number | null;
+  participants: BackendParticipantOut[];
+}
+
+export interface BackendParticipantOut {
+  speaker_label: string;
+  display_name: string | null;
+  role: string | null;
+  side: string | null;
 }
 
 export interface BackendCallStatus {
@@ -113,6 +124,7 @@ export interface BackendClientOut {
   calls: number;
   last_call: string | null;
   sentiment: string | null;
+  sentiment_score: number | null;
 }
 
 export interface BackendClientDetail extends BackendClientOut {
@@ -150,7 +162,7 @@ export interface BackendTopPainPoint {
 export interface BackendDashboardOut {
   calls_this_week: BackendKPIItem;
   avg_sentiment: BackendKPIItem;
-  conversion_rate: BackendKPIItem;
+  total_cost_usd: BackendKPIItem;
   talk_listen_ratio: BackendKPIItem;
   sentiment_trend: BackendSentimentPoint[];
   calls_per_day: BackendDailyCallsPoint[];
@@ -211,7 +223,8 @@ export function mapCallSummary(raw: BackendCallSummary): CallSummary {
     created_at: raw.created_at,
     duration_seconds: raw.duration_seconds,
     tags: raw.tags.map(mapTag),
-    overall_sentiment: null,
+    overall_sentiment: raw.overall_sentiment,
+    sentiment_score: raw.sentiment_score,
     deal_status: null,
     owner: null,
   };
@@ -229,22 +242,37 @@ export function mapCallDetail(raw: BackendCallDetail): CallDetail {
     mood: seg.mood,
   }));
 
-  // Derive participants from unique speaker labels
+  // Derive participants from unique speaker labels, then overlay any saved
+  // participant config from the backend (display_name, role, side).
   const seen = new Map<string, { role: string | null; index: number }>();
   for (const seg of raw.segments) {
     if (!seen.has(seg.speaker_label)) {
       seen.set(seg.speaker_label, { role: seg.speaker_role, index: seen.size });
     }
   }
+  const savedByLabel = new Map<string, BackendParticipantOut>(
+    (raw.participants ?? []).map((p) => [p.speaker_label, p])
+  );
   const participants: Participant[] = Array.from(seen.entries()).map(
-    ([label, { role, index }]) => ({
-      speaker_label: label,
-      name: label,
-      role: role ?? null,
-      initials: label.slice(0, 2).toUpperCase(),
-      side: index === 0 ? "rep" : "client",
-      color: SPEAKER_COLORS[index % SPEAKER_COLORS.length],
-    })
+    ([label, { role, index }]) => {
+      const saved = savedByLabel.get(label);
+      const name = saved?.display_name ?? label;
+      const finalRole = saved?.role ?? role ?? null;
+      const side: "rep" | "client" =
+        saved?.side === "rep" || saved?.side === "client"
+          ? saved.side
+          : index === 0
+          ? "rep"
+          : "client";
+      return {
+        speaker_label: label,
+        name,
+        role: finalRole,
+        initials: name.slice(0, 2).toUpperCase(),
+        side,
+        color: SPEAKER_COLORS[index % SPEAKER_COLORS.length],
+      };
+    }
   );
 
   // Derive emotion_distribution
@@ -300,6 +328,7 @@ export function mapCallDetail(raw: BackendCallDetail): CallDetail {
     duration_seconds: raw.duration_seconds,
     tags: raw.tags.map(mapTag),
     overall_sentiment: raw.analysis?.overall_sentiment ?? null,
+    sentiment_score: raw.sentiment_score,
     deal_status: null,
     owner: null,
     filename: raw.original_filename,
@@ -344,6 +373,7 @@ export function mapClient(raw: BackendClientOut): Client {
     calls: raw.calls,
     last_call: raw.last_call,
     sentiment: raw.sentiment,
+    sentiment_score: raw.sentiment_score,
     health: null,
     arr: null,
   };
@@ -365,29 +395,41 @@ export function mapDashboard(
       label: "Calls this week",
       value: raw.calls_this_week.value,
       delta: raw.calls_this_week.delta,
+      delta_label: null,
       positive: (raw.calls_this_week.delta ?? 0) >= 0,
       spark: [] as number[],
+      compare_label: "vs last week",
     },
     {
       label: "Avg sentiment",
       value: raw.avg_sentiment.value,
       delta: raw.avg_sentiment.delta,
+      delta_label: null,
       positive: (raw.avg_sentiment.delta ?? 0) >= 0,
       spark: [] as number[],
+      compare_label: "vs prior 30 days",
     },
     {
-      label: "Conversion rate",
-      value: raw.conversion_rate.value,
-      delta: raw.conversion_rate.delta,
-      positive: (raw.conversion_rate.delta ?? 0) >= 0,
+      label: "Total cost",
+      value: `$${raw.total_cost_usd.value.toFixed(3)}`,
+      delta: raw.total_cost_usd.delta,
+      delta_label:
+        raw.total_cost_usd.delta != null
+          ? `${raw.total_cost_usd.delta >= 0 ? "+" : "-"}$${Math.abs(raw.total_cost_usd.delta).toFixed(3)}`
+          : null,
+      // Cost going UP is NOT a positive signal — flip the sign.
+      positive: (raw.total_cost_usd.delta ?? 0) <= 0,
       spark: [] as number[],
+      compare_label: "vs before 30 days ago",
     },
     {
       label: "Talk:Listen ratio",
       value: raw.talk_listen_ratio.value,
       delta: raw.talk_listen_ratio.delta,
+      delta_label: null,
       positive: (raw.talk_listen_ratio.delta ?? 0) >= 0,
       spark: [] as number[],
+      compare_label: "vs prior 30 days",
     },
   ];
 

@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db import get_session
 from app.core.errors import DomainError
+from app.llm.schemas.synthesis import sentiment_to_score
 from app.models.analysis import Analysis
 from app.models.call import Call
 from app.models.client import Client
@@ -37,6 +38,7 @@ async def _build_client_out(session: AsyncSession, client: Client) -> ClientOut:
         .limit(1)
     )
     sent = sent_row.fetchone()
+    sentiment_label = sent[0] if sent else None
 
     return ClientOut(
         id=client.id,
@@ -46,7 +48,8 @@ async def _build_client_out(session: AsyncSession, client: Client) -> ClientOut:
         created_at=client.created_at,
         calls=agg[0] if agg else 0,
         last_call=agg[1] if agg else None,
-        sentiment=sent[0] if sent else None,
+        sentiment=sentiment_label,
+        sentiment_score=sentiment_to_score(sentiment_label),
     )
 
 
@@ -60,11 +63,15 @@ async def _build_call_summary(session: AsyncSession, call: Call) -> CallSummary:
         )
         client_name = client_row.scalar()
 
-    # Get cost
-    cost_row = await session.execute(
-        select(Analysis.cost_usd_total).where(Analysis.call_id == call.id)
+    # Get cost and sentiment
+    analysis_row = await session.execute(
+        select(Analysis.cost_usd_total, Analysis.overall_sentiment).where(
+            Analysis.call_id == call.id
+        )
     )
-    cost_usd_total = cost_row.scalar()
+    analysis_data = analysis_row.fetchone()
+    cost_usd_total = analysis_data[0] if analysis_data else None
+    overall_sentiment = analysis_data[1] if analysis_data else None
 
     # Get tags via call_tags
     tag_rows = await session.execute(
@@ -93,6 +100,8 @@ async def _build_call_summary(session: AsyncSession, call: Call) -> CallSummary:
         duration_seconds=call.duration_seconds,
         tags=tags,
         cost_usd_total=float(cost_usd_total) if cost_usd_total is not None else None,
+        overall_sentiment=overall_sentiment,
+        sentiment_score=sentiment_to_score(overall_sentiment),
     )
 
 
@@ -178,5 +187,6 @@ async def get_client(
         calls=client_out.calls,
         last_call=client_out.last_call,
         sentiment=client_out.sentiment,
+        sentiment_score=client_out.sentiment_score,
         recent_calls=recent_calls,
     )

@@ -131,6 +131,7 @@ class FakeLLMProvider:
                 headline="Positive discovery call with interested client",
                 summary="The call went well. Client showed buying signals. Rep should send proposal. No blockers identified. Follow-up agreed.",
                 overall_sentiment="positive",
+                language="en",
             )
         else:
             parsed = schema()  # type: ignore[call-arg]

@@ -93,6 +93,7 @@ export default function UploadScreen() {
             calls: 0,
             last_call: null,
             sentiment: null,
+            sentiment_score: null,
             health: "on-track",
             arr: null,
           });

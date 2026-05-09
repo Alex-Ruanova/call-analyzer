@@ -148,8 +148,13 @@ async def transcribe_stage(
             )
             session.add(segment)
 
-        if call.duration_seconds is None and diarized.duration_seconds is not None:
-            call.duration_seconds = diarized.duration_seconds
+        if call.duration_seconds is None:
+            if diarized.duration_seconds is not None:
+                call.duration_seconds = diarized.duration_seconds
+            elif diarized.segments:
+                # OpenAI's diarized_json response_format does not include a top-level
+                # duration field; fall back to the latest segment end timestamp.
+                call.duration_seconds = max(seg.end for seg in diarized.segments)
 
         await session.commit()
         await session.refresh(transcript)
@@ -217,6 +222,8 @@ async def _transcribe_chunked(
         total_cost += anchor_cost
 
     language_val = chunk_results[0][1].language if chunk_results else None
+    if total_duration is None and all_segments:
+        total_duration = max(seg.end for seg in all_segments)
     return (
         DiarizedTranscript(
             segments=all_segments,
@@ -554,6 +561,15 @@ async def synthesis_stage(
         synth: Synthesis = llm_result.parsed
 
         talk_ratio_rep, talk_ratio_client = _compute_talk_ratios(segments)
+
+        # Persist the LLM-detected language back to the call/transcript so the UI
+        # can show it instead of guessing. STT (diarized_json) does not return it.
+        call_row = await session.get(Call, call_id)
+        if call_row is not None and synth.language:
+            call_row.language = synth.language
+        transcript_row = await session.get(Transcript, transcript_id)
+        if transcript_row is not None and synth.language:
+            transcript_row.language = synth.language
 
         analysis = Analysis(
             call_id=call_id,

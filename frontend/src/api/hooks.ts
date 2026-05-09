@@ -176,6 +176,28 @@ export function useAssignClient() {
   });
 }
 
+export function useUpdateParticipants() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (args: {
+      callId: string;
+      participants: Array<{
+        speaker_label: string;
+        display_name: string | null;
+        role: string | null;
+        side: "rep" | "client" | null;
+      }>;
+    }) =>
+      apiFetch("/api/calls/" + args.callId + "/participants", {
+        method: "PUT",
+        body: JSON.stringify({ participants: args.participants }),
+      }),
+    onSuccess: (_data, vars) => {
+      void qc.invalidateQueries({ queryKey: ["call", vars.callId] });
+    },
+  });
+}
+
 export function useDeleteCall() {
   const qc = useQueryClient();
   return useMutation({

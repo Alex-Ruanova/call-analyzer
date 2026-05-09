@@ -10,6 +10,21 @@ interface NewClientState {
   owner: string;
 }
 
+function formatLastCall(value: string | null): string {
+  if (!value) return "—";
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return "—";
+  const now = new Date();
+  const diffMs = now.getTime() - d.getTime();
+  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+  if (diffDays < 0) return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+  if (diffDays === 0) return "Today";
+  if (diffDays === 1) return "Yesterday";
+  if (diffDays < 7) return `${diffDays} days ago`;
+  if (diffDays < 30) return `${Math.floor(diffDays / 7)}w ago`;
+  return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+}
+
 interface ClientsScreenProps {
   pinnedClients: string[];
   onTogglePin: (id: string) => void;
@@ -38,6 +53,7 @@ export default function ClientsScreen({ pinnedClients, onTogglePin }: ClientsScr
       calls: 0,
       last_call: null,
       sentiment: null,
+      sentiment_score: null,
       health: "on-track",
       arr: null,
     };
@@ -108,7 +124,7 @@ interface ClientCardProps {
 }
 
 function ClientCard({ client: c, isPinned, onTogglePin, onOpen, onUpload }: ClientCardProps) {
-  const sentiment = c.sentiment != null ? parseFloat(c.sentiment) : 0;
+  const sentiment = c.sentiment_score;
 
   return (
     <div
@@ -165,13 +181,17 @@ function ClientCard({ client: c, isPinned, onTogglePin, onOpen, onUpload }: Clie
           <div style={{ fontSize: 10.5, color: "var(--text-4)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 2 }}>
             Last call
           </div>
-          <div style={{ color: "var(--text-2)" }}>{c.last_call ?? "—"}</div>
+          <div style={{ color: "var(--text-2)" }}>{formatLastCall(c.last_call)}</div>
         </div>
         <div>
           <div style={{ fontSize: 10.5, color: "var(--text-4)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 2 }}>
             Sentiment
           </div>
-          <SentimentBar value={sentiment} width={50} />
+          {sentiment != null ? (
+            <SentimentBar value={sentiment} width={50} />
+          ) : (
+            <span style={{ color: "var(--text-4)", fontSize: 11 }}>—</span>
+          )}
         </div>
       </div>
       <div style={{ display: "flex", gap: 6, paddingTop: 10, borderTop: "1px solid var(--border)" }}>

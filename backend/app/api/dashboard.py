@@ -102,6 +102,22 @@ async def get_dashboard(
     prior_tlr = float(prior_tlr_val) if prior_tlr_val is not None else 0.0
     tlr_delta = talk_listen_ratio_val - prior_tlr
 
+    # --- total_cost_usd (SUM analyses.cost_usd_total all-time) ---
+    total_cost_row = await session.execute(
+        text("SELECT COALESCE(SUM(cost_usd_total), 0.0) FROM analyses")
+    )
+    total_cost_val = float(total_cost_row.scalar() or 0.0)
+
+    prior_cost_row = await session.execute(
+        text(
+            "SELECT COALESCE(SUM(a.cost_usd_total), 0.0) "
+            "FROM analyses a JOIN calls c ON c.id = a.call_id "
+            "WHERE c.created_at < now() - INTERVAL '30 days'"
+        )
+    )
+    prior_cost_val = float(prior_cost_row.scalar() or 0.0)
+    total_cost_delta = total_cost_val - prior_cost_val
+
     # --- sentiment_trend (last 12 calendar weeks) ---
     trend_rows = await session.execute(
         text(
@@ -199,7 +215,7 @@ async def get_dashboard(
     return DashboardOut(
         calls_this_week=KPIItem(value=calls_this_week_val, delta=calls_this_week_delta),
         avg_sentiment=KPIItem(value=avg_sentiment_val, delta=avg_sentiment_delta),
-        conversion_rate=KPIItem(value=0.0, delta=None),
+        total_cost_usd=KPIItem(value=total_cost_val, delta=total_cost_delta),
         talk_listen_ratio=KPIItem(value=talk_listen_ratio_val, delta=tlr_delta),
         sentiment_trend=sentiment_trend,
         calls_per_day=calls_per_day,

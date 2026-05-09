@@ -22,7 +22,7 @@ export default function ClientDetailScreen({ pinnedClients, onTogglePin }: Clien
   const c = clientDetail;
   const recentCalls: CallSummary[] = clientDetail.recent_calls;
   const sentimentValues = recentCalls
-    .map((rc) => (rc.overall_sentiment != null ? parseFloat(rc.overall_sentiment) : null))
+    .map((rc) => rc.sentiment_score)
     .filter((v): v is number => v != null);
   const avgSentiment = sentimentValues.length
     ? sentimentValues.reduce((a, b) => a + b, 0) / sentimentValues.length
@@ -126,7 +126,7 @@ export default function ClientDetailScreen({ pinnedClients, onTogglePin }: Clien
               </thead>
               <tbody>
                 {recentCalls.map((rc) => {
-                  const sentiment = rc.overall_sentiment != null ? parseFloat(rc.overall_sentiment) : 0;
+                  const sentiment = rc.sentiment_score;
                   const durationMin = rc.duration_seconds != null ? Math.floor(rc.duration_seconds / 60) : 0;
                   const durationSec = rc.duration_seconds != null ? rc.duration_seconds % 60 : 0;
                   const durationStr = rc.duration_seconds != null
@@ -145,7 +145,11 @@ export default function ClientDetailScreen({ pinnedClients, onTogglePin }: Clien
                         </div>
                       </td>
                       <td>
-                        <SentimentBar value={sentiment} />
+                        {sentiment != null ? (
+                          <SentimentBar value={sentiment} />
+                        ) : (
+                          <span style={{ color: "var(--text-4)" }}>—</span>
+                        )}
                       </td>
                       <td style={{ color: "var(--text-2)", fontVariantNumeric: "tabular-nums" }}>
                         {new Date(rc.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })}

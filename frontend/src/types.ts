@@ -116,6 +116,7 @@ export interface CallSummary {
   created_at: string;
   tags: Tag[];
   overall_sentiment: string | null;
+  sentiment_score: number | null;
   owner: string | null;
 }
 
@@ -151,6 +152,7 @@ export interface Client {
   calls: number;
   last_call: string | null;
   sentiment: string | null;
+  sentiment_score: number | null;
   health: string | null;
   arr: number | null;
 }
@@ -164,8 +166,10 @@ export interface Kpi {
   label: string;
   value: string | number;
   delta: number | null;
+  delta_label: string | null;
   positive: boolean;
   spark: number[];
+  compare_label: string;
 }
 
 export interface PipelineStage {

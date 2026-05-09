@@ -13,6 +13,7 @@ if TYPE_CHECKING:
     from app.models.analysis import Analysis
     from app.models.client import Client
     from app.models.insight import ActionItem, Insight
+    from app.models.participant import Participant
     from app.models.tag import CallTag, Tag
     from app.models.transcript import Transcript
 
@@ -82,5 +83,8 @@ class Call(Base):
         back_populates="call", cascade="all, delete-orphan"
     )
     action_items: Mapped[list[ActionItem]] = relationship(
+        back_populates="call", cascade="all, delete-orphan"
+    )
+    participants: Mapped[list[Participant]] = relationship(
         back_populates="call", cascade="all, delete-orphan"
     )

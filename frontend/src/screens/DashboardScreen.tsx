@@ -24,10 +24,6 @@ export default function DashboardScreen() {
           </p>
         </div>
         <div style={{ flex: 1 }} />
-        <button className="btn btn--sm">
-          <Icons.Clock size={11} />
-          Last 14 days
-        </button>
         <button className="btn btn--primary" onClick={() => navigate("/upload")}>
           <Icons.Plus size={13} />
           New analysis
@@ -48,8 +44,8 @@ export default function DashboardScreen() {
                 </div>
                 <div style={{ fontSize: 11.5, color: k.positive ? "var(--accent)" : "#f43f5e", marginTop: 4, display: "inline-flex", alignItems: "center", gap: 4 }}>
                   {k.positive ? <Icons.TrendingUp size={11} /> : <Icons.TrendingDown size={11} />}
-                  {k.delta != null ? (k.delta > 0 ? "+" : "") + k.delta : "—"}{" "}
-                  <span style={{ color: "var(--text-4)" }}>vs last week</span>
+                  {k.delta_label ?? (k.delta != null ? (k.delta > 0 ? "+" : "") + k.delta : "—")}{" "}
+                  <span style={{ color: "var(--text-4)" }}>{k.compare_label}</span>
                 </div>
               </div>
               <Sparkline data={k.spark} width={70} height={32} color={k.positive ? "#10b981" : "#f43f5e"} />
@@ -108,13 +104,17 @@ export default function DashboardScreen() {
           </thead>
           <tbody>
             {dashboard.recent_calls.map((c) => {
-              const sentiment = c.overall_sentiment != null ? parseFloat(c.overall_sentiment) : 0;
+              const sentiment = c.sentiment_score;
               return (
                 <tr key={c.id} onClick={() => navigate(`/calls/${c.id}`)}>
                   <td style={{ paddingLeft: 16, fontWeight: 500 }}>{c.title}</td>
                   <td style={{ color: "var(--text-2)" }}>{c.client_name ?? "—"}</td>
                   <td>
-                    <SentimentSpark sentiment={sentiment} />
+                    {sentiment != null ? (
+                      <SentimentSpark sentiment={sentiment} />
+                    ) : (
+                      <span style={{ color: "var(--text-4)" }}>—</span>
+                    )}
                   </td>
                   <td style={{ color: "var(--text-2)", fontVariantNumeric: "tabular-nums" }}>
                     {new Date(c.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })}

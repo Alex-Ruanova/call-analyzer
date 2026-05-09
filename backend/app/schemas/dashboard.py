@@ -32,7 +32,7 @@ class TopPainPoint(BaseModel):
 class DashboardOut(BaseModel):
     calls_this_week: KPIItem
     avg_sentiment: KPIItem
-    conversion_rate: KPIItem
+    total_cost_usd: KPIItem
     talk_listen_ratio: KPIItem
     sentiment_trend: list[SentimentPoint]
     calls_per_day: list[DailyCallsPoint]

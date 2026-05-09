@@ -19,6 +19,21 @@ class TagOverrideRequest(BaseModel):
     tag_ids: list[int]
 
 
+class ParticipantIn(BaseModel):
+    speaker_label: str
+    display_name: str | None = None
+    role: str | None = None
+    side: str | None = None  # 'rep' | 'client'
+
+
+class ParticipantOut(ParticipantIn):
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ParticipantsRequest(BaseModel):
+    participants: list[ParticipantIn]
+
+
 class TranscriptSegmentOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -76,6 +91,8 @@ class CallSummary(BaseModel):
     duration_seconds: float | None
     tags: list[TagOut]
     cost_usd_total: float | None
+    overall_sentiment: str | None = None
+    sentiment_score: float | None = None
 
 
 class CallDetail(BaseModel):
@@ -98,6 +115,8 @@ class CallDetail(BaseModel):
     action_items: list[ActionItemOut]
     analysis: AnalysisOut | None
     error_message: str | None
+    sentiment_score: float | None = None
+    participants: list[ParticipantOut] = []
 
 
 class CallStatusOut(BaseModel):

@@ -18,8 +18,10 @@ from app.api.middleware import check_budget
 from app.core.config import settings
 from app.core.db import get_session
 from app.core.errors import DomainError
+from app.llm.schemas.synthesis import sentiment_to_score
 from app.models.call import Call
 from app.models.client import Client
+from app.models.participant import Participant
 from app.models.tag import CallTag, Tag
 from app.models.transcript import Transcript
 from app.schemas.call import (
@@ -30,6 +32,8 @@ from app.schemas.call import (
     CallSummary,
     CallUpdate,
     InsightOut,
+    ParticipantOut,
+    ParticipantsRequest,
     TagOverrideRequest,
     TranscriptSegmentOut,
 )
@@ -74,6 +78,7 @@ async def _load_call_detail(call_id: int, session: AsyncSession) -> Call | None:
             selectinload(Call.insights),
             selectinload(Call.action_items),
             selectinload(Call.analysis),
+            selectinload(Call.participants),
             selectinload(Call.transcript).selectinload(Transcript.segments),
         )
     )
@@ -117,6 +122,9 @@ def _call_to_detail(call: Call, client_name: str | None = None) -> CallDetail:
             cost_usd_total=float(call.analysis.cost_usd_total),
         )
 
+    overall_sentiment = call.analysis.overall_sentiment if call.analysis else None
+    participants = [ParticipantOut.model_validate(p) for p in call.participants]
+
     return CallDetail(
         id=call.id,
         title=call.title,
@@ -135,6 +143,8 @@ def _call_to_detail(call: Call, client_name: str | None = None) -> CallDetail:
         action_items=action_items,
         analysis=analysis,
         error_message=call.error_message,
+        sentiment_score=sentiment_to_score(overall_sentiment),
+        participants=participants,
     )
 
 
@@ -356,6 +366,7 @@ async def list_calls(
         cost_usd_total = (
             float(call.analysis.cost_usd_total) if call.analysis else None
         )
+        overall_sentiment = call.analysis.overall_sentiment if call.analysis else None
         summaries.append(
             CallSummary(
                 id=call.id,
@@ -367,6 +378,8 @@ async def list_calls(
                 duration_seconds=call.duration_seconds,
                 tags=tags,
                 cost_usd_total=cost_usd_total,
+                overall_sentiment=overall_sentiment,
+                sentiment_score=sentiment_to_score(overall_sentiment),
             )
         )
 
@@ -517,6 +530,46 @@ async def override_call_tags(
         client_name = cn_row.scalar()
 
     return _call_to_detail(call, client_name=client_name)
+
+
+@router.put(
+    "/calls/{call_id}/participants",
+    summary="Replace participants for a call",
+    response_model=list[ParticipantOut],
+    responses={404: {"description": "Not found"}},
+)
+async def replace_participants(
+    call_id: int,
+    body: ParticipantsRequest,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> list[ParticipantOut]:
+    call = await session.get(Call, call_id)
+    if not call:
+        raise DomainError(
+            code="call_not_found",
+            message=f"Call {call_id} not found",
+            status_code=404,
+        )
+
+    await session.execute(delete(Participant).where(Participant.call_id == call_id))
+    for p in body.participants:
+        if not p.speaker_label:
+            continue
+        session.add(
+            Participant(
+                call_id=call_id,
+                speaker_label=p.speaker_label,
+                display_name=p.display_name,
+                role=p.role,
+                side=p.side,
+            )
+        )
+    await session.commit()
+
+    rows = await session.execute(
+        select(Participant).where(Participant.call_id == call_id)
+    )
+    return [ParticipantOut.model_validate(p) for p in rows.scalars().all()]
 
 
 @router.delete(

@@ -30,6 +30,8 @@ const baseSummary: BackendCallSummary = {
   duration_seconds: 120,
   tags: [baseTag],
   cost_usd_total: 0.01,
+  overall_sentiment: null,
+  sentiment_score: null,
 };
 
 const segA: BackendTranscriptSegment = {
@@ -85,12 +87,14 @@ const baseDetail: BackendCallDetail = {
   action_items: [],
   analysis: null,
   error_message: null,
+  sentiment_score: null,
+  participants: [],
 };
 
 const baseDashboard: BackendDashboardOut = {
   calls_this_week: { value: 10, delta: 2 },
   avg_sentiment: { value: 0.55, delta: null },
-  conversion_rate: { value: 30, delta: 5 },
+  total_cost_usd: { value: 0.123, delta: 0.045 },
   talk_listen_ratio: { value: 46, delta: -1 },
   sentiment_trend: [
     { week: "W1", positive: 5, neutral: 3, negative: 2 },  // total 10, score = 0.5

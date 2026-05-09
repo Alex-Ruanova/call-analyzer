@@ -60,8 +60,8 @@ export default function ListScreen() {
       });
     } else if (sort.key === "sentiment") {
       r.sort((a, b) => {
-        const av = a.overall_sentiment != null ? parseFloat(a.overall_sentiment) : -1;
-        const bv = b.overall_sentiment != null ? parseFloat(b.overall_sentiment) : -1;
+        const av = a.sentiment_score ?? -2;
+        const bv = b.sentiment_score ?? -2;
         return sort.dir === "asc" ? av - bv : bv - av;
       });
     }
@@ -192,7 +192,7 @@ export default function ListScreen() {
           </thead>
           <tbody>
             {calls.map((c) => {
-              const sentiment = c.overall_sentiment != null ? parseFloat(c.overall_sentiment) : 0;
+              const sentiment = c.sentiment_score;
               const isUnassigned = !c.client_id;
               const durationMin = c.duration_seconds != null ? Math.floor(c.duration_seconds / 60) : 0;
               const durationSec = c.duration_seconds != null ? c.duration_seconds % 60 : 0;
@@ -237,7 +237,11 @@ export default function ListScreen() {
                     )}
                   </td>
                   <td>
-                    <SentimentBar value={sentiment} />
+                    {sentiment != null ? (
+                      <SentimentBar value={sentiment} />
+                    ) : (
+                      <span style={{ color: "var(--text-4)" }}>—</span>
+                    )}
                   </td>
                   <td style={{ color: "var(--text-2)", fontVariantNumeric: "tabular-nums" }}>{dateStr}</td>
                   <td style={{ color: "var(--text-2)", fontVariantNumeric: "tabular-nums" }}>{durationStr}</td>

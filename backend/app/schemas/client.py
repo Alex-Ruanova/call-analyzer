@@ -22,6 +22,7 @@ class ClientOut(BaseModel):
     calls: int = 0
     last_call: datetime | None = None
     sentiment: str | None = None
+    sentiment_score: float | None = None
 
 
 class ClientDetail(ClientOut):
