@@ -47,11 +47,14 @@ CLIENTS = [
 
 TAGS_DATA = [
     {"name": "discovery", "color": "#10b981", "is_system": True},
-    {"name": "objection", "color": "#f59e0b", "is_system": True},
-    {"name": "follow-up", "color": "#a78bfa", "is_system": True},
     {"name": "demo", "color": "#22d3ee", "is_system": True},
-    {"name": "pricing", "color": "#f43f5e", "is_system": True},
-    {"name": "renewal", "color": "#6366f1", "is_system": False},
+    {"name": "objection-handling", "color": "#f59e0b", "is_system": True},
+    {"name": "pricing-discussion", "color": "#f43f5e", "is_system": True},
+    {"name": "follow-up-agreed", "color": "#a78bfa", "is_system": True},
+    {"name": "positive-outcome", "color": "#10b981", "is_system": True},
+    {"name": "feature-request", "color": "#0ea5e9", "is_system": True},
+    {"name": "onboarding", "color": "#6366f1", "is_system": True},
+    {"name": "renewal", "color": "#6366f1", "is_system": True},
 ]
 
 now = datetime.utcnow()
