@@ -12,13 +12,12 @@ Esta carpeta documenta deuda técnica conocida del proyecto: bugs corregidos con
 - [06 — Hardcodes residuales en DetailScreen (pendiente)](./06-detailscreen-hardcoded-copy.md)
 - [07 — Detección de idioma + recap multilingüe (resuelto, llamadas nuevas)](./07-language-detection-and-multilingual-recap.md)
 - [08 — Persistencia de participants (resuelto, incluye migración)](./08-participants-persistence.md)
-- [09 — Last call: formato relativo en client cards (resuelto)](./09-client-card-last-call-format.md)
 - [10 — Auto-migrate al arrancar la API (resuelto)](./10-auto-migrate-on-bootstrap.md)
 - [11 — Tag taxonomy ahora viene de la BD (resuelto)](./11-tag-taxonomy-from-db.md)
-- [12 — Tag `other` + formato de tiempos en UI (resuelto)](./12-other-tag-fallback-and-time-formatting.md)
 
 ## Convenciones
 
 - Cada archivo arranca con un bloque de metadatos (estado, fecha, archivos tocados).
 - "Resuelto" significa que el bug se arregló pero puede haber follow-ups (backfill, refactor, métrica más rica).
 - "Pendiente" significa decisión de producto o trabajo no priorizado.
+- IDs son estables (no se renumeran). Los huecos en el índice (09, 12) son intencionales — esos cambios eran ajustes de UI menores, mejor documentados en el commit que como deuda.
