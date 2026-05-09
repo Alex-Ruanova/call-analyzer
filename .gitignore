@@ -12,9 +12,8 @@ frontend/dist
 frontend/.vite
 
 # Storage
-storage/
-*.wav
-*.mp3
+storage/audio/*.wav
+storage/audio/*.mp3
 
 # Secrets
 .env

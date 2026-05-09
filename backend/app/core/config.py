@@ -5,10 +5,10 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
-    DATABASE_URL: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/altur"
-    REDIS_URL: str = "redis://localhost:6379/0"
-    OPENAI_API_KEY: str = ""
-    AUDIO_STORAGE_DIR: str = "/app/storage/audio"
+    DATABASE_URL: str
+    REDIS_URL: str
+    OPENAI_API_KEY: str
+    AUDIO_STORAGE_DIR: str = "./storage/audio"
 
     LLM_MODEL_TAGGING: str = "gpt-4o-mini"
     LLM_MODEL_MOOD: str = "gpt-4o-mini"

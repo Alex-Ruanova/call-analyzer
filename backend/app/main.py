@@ -1,11 +1,22 @@
+from contextlib import asynccontextmanager
 from pathlib import Path
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
-from app.core.config import settings
-from app.core.errors import DomainError, domain_error_handler, validation_error_handler, generic_error_handler
-from pydantic import ValidationError
+from typing import AsyncGenerator
 
-app = FastAPI(title="Altur API", version="0.1.0")
+from fastapi import FastAPI
+from fastapi.exceptions import RequestValidationError
+from fastapi.middleware.cors import CORSMiddleware
+
+from app.core.config import settings
+from app.core.errors import DomainError, domain_error_handler, request_validation_error_handler, generic_error_handler
+
+
+@asynccontextmanager
+async def lifespan(_: FastAPI) -> AsyncGenerator[None, None]:
+    Path(settings.AUDIO_STORAGE_DIR).mkdir(parents=True, exist_ok=True)
+    yield
+
+
+app = FastAPI(title="Altur API", version="0.1.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -16,13 +27,8 @@ app.add_middleware(
 )
 
 app.add_exception_handler(DomainError, domain_error_handler)
-app.add_exception_handler(ValidationError, validation_error_handler)
+app.add_exception_handler(RequestValidationError, request_validation_error_handler)
 app.add_exception_handler(Exception, generic_error_handler)
-
-
-@app.on_event("startup")
-async def startup() -> None:
-    Path(settings.AUDIO_STORAGE_DIR).mkdir(parents=True, exist_ok=True)
 
 
 @app.get("/health")

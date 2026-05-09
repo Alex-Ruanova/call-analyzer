@@ -1,7 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
-import { useState, useEffect, createContext, useContext, useCallback } from "react";
+import { useState, useEffect, useRef, createContext, useContext, useCallback } from "react";
 import "./styles.css";
 import { RouterSidebar, Topbar } from "./components/components";
 import { TweaksPanel, TweakSection, TweakColor, TweakRadio, TweakToggle, useTweaks } from "./components/TweaksPanel";
@@ -83,17 +83,19 @@ function AppShell() {
     document.documentElement.dataset["density"] = t.density;
   }, [t.accent, t.density]);
 
-  // Collapse sidebar on mobile
+  // Collapse sidebar on mobile — ref avoids re-registering the listener on every tweak change
+  const sidebarCollapsedRef = useRef(t.sidebarCollapsed);
+  sidebarCollapsedRef.current = t.sidebarCollapsed;
+
   useEffect(() => {
     const onResize = () => {
       const isMobile = window.matchMedia("(max-width: 980px)").matches;
-      if (isMobile && !t.sidebarCollapsed) setTweak("sidebarCollapsed", true);
+      if (isMobile && !sidebarCollapsedRef.current) setTweak("sidebarCollapsed", true);
     };
     onResize();
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [setTweak]);
 
   // Build breadcrumbs from pathname, applying dynamic override for detail screens
   const crumbs = buildCrumbs(location.pathname, crumbOverride);

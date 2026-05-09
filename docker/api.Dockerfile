@@ -5,4 +5,5 @@ COPY backend/pyproject.toml backend/uv.lock ./
 RUN uv sync --frozen --no-dev
 COPY backend/ .
 ENV PYTHONPATH=/app
+ENV AUDIO_STORAGE_DIR=/app/storage/audio
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
