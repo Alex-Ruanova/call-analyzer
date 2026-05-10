@@ -103,7 +103,7 @@ async def transcribe_stage(
     session_factory: async_sessionmaker[AsyncSession],
     stt_provider: STTProvider,
     llm_provider: LLMProvider,
-) -> tuple[Transcript, float]:
+) -> tuple[Transcript, float, float | None]:
     async with session_factory() as session:
         call = await session.get(Call, call_id)
         if call is None:
@@ -119,6 +119,16 @@ async def transcribe_stage(
                     f"Audio file not found: {audio_path}",
                     404,
                 )
+
+            # Persist duration early so the status endpoint can show an ETA
+            # before the (potentially long) STT call completes.
+            if call.duration_seconds is None:
+                probed = await asyncio.get_running_loop().run_in_executor(
+                    None, _probe_duration, audio_path
+                )
+                if probed is not None:
+                    call.duration_seconds = probed
+                    await session.commit()
 
             file_size = audio_path.stat().st_size
             if file_size > 24 * 1024 * 1024:
@@ -163,7 +173,7 @@ async def transcribe_stage(
 
         await session.commit()
         await session.refresh(transcript)
-        return transcript, total_cost
+        return transcript, total_cost, call.duration_seconds
 
 
 async def _transcribe_chunked(
@@ -287,6 +297,19 @@ def _flag_minor_speakers(
     return [s.speaker in suspect for s in segments]
 
 
+def _probe_duration(audio_path: Path) -> float | None:
+    probe = subprocess.run(
+        ["ffprobe", "-v", "error", "-show_entries", "format=duration",
+         "-of", "default=noprint_wrappers=1:nokey=1", str(audio_path)],
+        capture_output=True,
+        text=True,
+    )
+    try:
+        return float(probe.stdout.strip())
+    except ValueError:
+        return None
+
+
 def _detect_silence(audio_path: Path) -> list[float]:
     result = subprocess.run(
         [
@@ -323,24 +346,7 @@ def _detect_silence(audio_path: Path) -> list[float]:
 def _build_chunk_intervals(
     audio_path: Path, silence_boundaries: list[float]
 ) -> list[tuple[float, float]]:
-    probe = subprocess.run(
-        [
-            "ffprobe",
-            "-v",
-            "error",
-            "-show_entries",
-            "format=duration",
-            "-of",
-            "default=noprint_wrappers=1:nokey=1",
-            str(audio_path),
-        ],
-        capture_output=True,
-        text=True,
-    )
-    try:
-        total_duration = float(probe.stdout.strip())
-    except ValueError:
-        total_duration = 3600.0
+    total_duration = _probe_duration(audio_path) or 3600.0
 
     max_chunk_seconds = 10 * 60
     intervals: list[tuple[float, float]] = []

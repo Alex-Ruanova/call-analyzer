@@ -138,8 +138,11 @@ export interface CallDetail extends CallSummary {
 
 export interface CallStatusResponse {
   status: CallStatus;
-  progress_step: string | null;
+  progress_step: number;
   error_message: string | null;
+  size_bytes: number;
+  duration_seconds: number | null;
+  transcription_ratio: number | null;
 }
 
 // ---- Clients ----

@@ -4,7 +4,7 @@ import enum
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import BigInteger, Enum, Float, ForeignKey, String, Text, func
+from sqlalchemy import BigInteger, Enum, Float, ForeignKey, Integer, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.db import Base
@@ -56,6 +56,7 @@ class Call(Base):
         index=True,
     )
     error_message: Mapped[str | None] = mapped_column(Text)
+    progress_step: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
     language: Mapped[str | None] = mapped_column(String(10))
     content_sha256: Mapped[str | None] = mapped_column(String(64), index=True)
     celery_task_id: Mapped[str | None] = mapped_column(String(255), index=True)
