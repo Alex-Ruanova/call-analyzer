@@ -1,8 +1,10 @@
 # Altur: Sales Call Intelligence MVP
 
-Altur is a sales-call analysis system that transcribes audio, detects buyer sentiment and pain points, suggests deal-relevant tags, and surfaces next-step commitments — all via a REST API + React frontend. It's designed to run end-to-end on a single engineer's laptop and scale to 10k calls/day with zero infrastructure rework.
+Altur is a sales-call analysis system that transcribes audio, detects buyer sentiment and pain points, suggests deal-relevant tags, and surfaces next-step commitments — all via a REST API + React frontend. The path from 1 call/day to 10k/day is described in [docs/architecture-and-scale.md](docs/architecture-and-scale.md).
 
-**Tech stack:** FastAPI + Celery + Redis + PostgreSQL (backend), Vite + React 18 + TypeScript + TanStack Query (frontend). LLM and STT providers are abstracted via Protocols, allowing a one-line swap (OpenAI ↔ Deepgram, gpt-4o-mini ↔ claude-opus, etc.). Cost tracking is first-class: every LLM call logs spend, and a Redis-backed daily budget cap prevents runaway bills.
+**Live demo:** https://altur.norvaru.com/ · **Local:** `make up`
+
+**Tech stack:** FastAPI + Celery + Redis + PostgreSQL (backend), Vite + React 18 + TypeScript + TanStack Query (frontend). STT and LLM are accessed through Protocols so providers (OpenAI, Deepgram, Anthropic) can be swapped via config. Every LLM/STT call logs `cost_usd` to the call's analysis row, and a Redis-backed daily budget cap blocks new uploads when exceeded.
 
 ---
 
@@ -41,6 +43,7 @@ The demo dataset is purely illustrative and entirely optional — skip it if you
 - **Frontend:** http://localhost:5173
 - **API docs:** http://localhost:8000/docs
 - **Database CLI:** `make psql`
+- **Live demo:** https://altur.norvaru.com/
 
 ### 4. Process a Call
 
@@ -150,7 +153,7 @@ Mapped to `docs/altur-instructions.md`. Where a feature is partial or deliberate
 - [x] List + detail UI — `ListScreen`, `DetailScreen`, plus `Dashboard`, `ClientDetail`, `Settings`.
 - [x] Coherent API + UI workflows — upload → status polling → detail; tag overrides; export; soft delete; phantom-speaker review queue.
 - [x] Testing strategy + tests — pytest (backend integration, real Postgres) + Vitest (frontend); see `Running Tests` below.
-- [x] Solid error handling — Result-style boundaries on provider calls, retries on transient failures, status=`failed` surfaced in UI, daily budget cap, per-IP rate limit.
+- [x] Error handling — Result-style boundaries on provider calls, retry-with-backoff on transient failures, `status=failed` surfaced in UI, daily budget cap, per-IP rate limit.
 - [x] README with setup, env, assumptions, architecture, what's next.
 - [x] Meaningful Git history (`git log --oneline` shows feature/fix/docs/refactor commits, no "done" mega-commit).
 - [x] 30-minute calls — chunked STT (`_build_chunk_intervals`), upload returns 202 in <200 ms, frontend polls.
@@ -164,9 +167,9 @@ Mapped to `docs/altur-instructions.md`. Where a feature is partial or deliberate
 - [x] Tag overrides — inline `TagEditor` on `DetailScreen`, persisted as `CallTag(source='user')`.
 - [x] Docker-compose — `make up` boots api + worker + db + redis + frontend with auto-migrate.
 - [x] Analytics dashboard — total calls, sentiment trend, tag distribution, talk:listen, total spend, per-client rollups.
-- [x] Edge-case tests + responsive UI polish.
+- [x] Edge-case tests — STT/LLM failures, invalid content-type uploads, budget-exceeded (429), rate-limit-exceeded (429), failed-status rendering in UI.
 - [x] **Super extra:** JSON export — `GET /api/calls/{id}/export` (audio metadata + transcript + summary + tags + overrides).
-- [x] **Super extra:** Live deployment — Azure Container Apps + Postgres flexible server + Blob storage; Terraform in `infra/`. Resource map and design choices in [docs/infrastructure.md](docs/infrastructure.md). Operator runbook is private (gitignored).
+- [x] **Super extra:** Live deployment — [altur.norvaru.com](https://altur.norvaru.com/). Azure Linux VM running the same `docker-compose` stack as local, with images pulled from Azure Container Registry and Cloudflare in front for DNS/TLS. Terraform in `infra/`, design choices and the *why-not-managed-services* trade-off in [docs/infrastructure.md](docs/infrastructure.md).
 - [ ] **Super extra (skipped on purpose):** Multi-user auth. Single-tenant API-key gate is wired (`AUTH_ENABLED`) but full OAuth2 + RBAC was a 4–6h scope I traded for depth on the analysis pipeline. See `docs/improvements.md → Auth, multi-tenancy, RBAC` for the design I'd ship.
 
 **Architecture & Scale (section 5):** all four questions answered in [docs/architecture-and-scale.md](docs/architecture-and-scale.md) — 10k/day, bottlenecks, production evolution, PII handling.
@@ -177,7 +180,7 @@ Mapped to `docs/altur-instructions.md`. Where a feature is partial or deliberate
 
 The full backlog (sized, prioritized) lives in [docs/improvements.md](docs/improvements.md). I'd skip the tactical polish and pick items that materially change what the product can do — and that I can defend in interview:
 
-1. **Reanalyze in place — `POST /api/calls/{id}/reanalyze`.** Reuses `Transcript` rows, only re-runs `tag_stage` + `analyze_stage`. Same call_id, no duplicate rows, no re-paying STT (cents instead of dollars). This is the canonical tool for prompt iteration; without it, every prompt tweak forces a re-upload and creates ghost calls. ~45 min.
+1. **Reanalyze in place — `POST /api/calls/{id}/reanalyze`.** Reuses `Transcript` rows, only re-runs `tag_stage` + `analyze_stage`. Same call_id, no duplicate rows, no re-paying STT (cents instead of dollars). This is the canonical tool for prompt iteration; without it, every prompt tweak forces a re-upload and creates ghost calls.
 
 2. **Semantic search across calls + clients with `pgvector`.** `text-embedding-3-small` on every transcript chunk, HNSW index in Postgres. Unlocks (a) global search ("show me every call mentioning ACME"), (b) cheap tag suggestion via nearest-neighbours instead of per-call LLM, (c) RAG into the synthesis prompt with top-k similar past calls — sales context the model otherwise hallucinates. The interesting design question is when retrieval-augmented tagging beats prompt-only tagging on cost-per-correct-tag — `make eval` already has the harness.
 
@@ -187,25 +190,13 @@ The full backlog (sized, prioritized) lives in [docs/improvements.md](docs/impro
 
 5. **PII redaction pass before LLM stages.** Regex + small NER for names / emails / phones, applied between STT and the LLM stages. Pairs with retention policy (audio TTL, redacted-only transcripts after 90 days) and per-row audit log. The interesting bit is measuring redaction accuracy — false negatives leak PII, false positives destroy analysis quality.
 
-The tactical wins (cost-by-stage UI, hardcoded copy in `DetailScreen`, conversion-rate KPI, tag management screen) are listed under `docs/improvements.md → Quick wins` — I'd batch them in a second 2-hour pass but they're not what I'd lead with.
+The tactical wins (cost-by-stage UI, hardcoded copy in `DetailScreen`, conversion-rate KPI, tag management screen) are listed under `docs/improvements.md → Quick wins` — I'd batch them but they're not what I'd lead with.
 
 ---
 
 ## How I worked
 
-I work in a spec-driven loop with multi-agent execution. Spec-driven development means every phase starts with a short written technical spec — file scope, contracts, acceptance criteria — that I commit *before* writing any code. From there I dispatch coding agents (Claude Code) against the spec and review their output against the same criteria.
-
-I work this way because the spec is where the real thinking happens, and I refuse to delegate that step. PRDs and phase specs are drafted with a dedicated skill, but I treat the first pass as a draft, never as truth — I read every line, audit it against what I actually want, push back, edit, and iterate until the document reflects my decision, not the model's. Only then does any coding agent run. The agents do the keystrokes; I never let them set direction. Once code lands, I read the full diff against the spec, run it locally, and write tests around the contracts the spec defined — testing is how I confirm the agent built what I asked for, not just something that compiles. The result is that the spec, the diff, the tests, and the resulting code all live in git side by side, and I (or anyone else) can reconstruct *why* a piece of code looks the way it does months later without archaeology.
-
-The folder layout reflects this loop:
-
-- **`docs/mvp/prd.md`** — the product brief: *what* we're building and *why*. Scope, success criteria, architecture one-pager, invariants, what's explicitly out. Source of truth for product intent.
-- **`docs/specs/`** — one phase spec per implementation slice. Each spec is *how* the code should look: file scope, directory layout, contracts, acceptance criteria, dependencies on prior phases. This is the document each coding agent runs against.
-- **`docs/technical-debt/`** — one numbered entry per compromise *or* bug I've fixed. Each entry carries metadata (state, date, files touched), the root cause, the fix applied (or the temporary workaround), and what "clean" looks like if it's still pending. Two uses in one place: pending entries are debt I'm tracking; resolved entries are a written record of bugs I diagnosed and corrected, so the *why* of the fix doesn't get lost in a commit message. Feeds directly into `docs/improvements.md`.
-
-I run this with a roster of specialized agents — a backend agent for FastAPI / SQLAlchemy / Celery work, a frontend agent for React + TanStack, a code-reviewer agent that audits diffs against the spec, a QA agent for test coverage, and a debugger agent reserved for when the first pass doesn't converge. The `/build` command takes a PRD with orchestration metadata, builds the dependency graph between phases, and runs them — sequentially when phases depend on each other, in parallel teams when they don't. So `phase-1-backend-foundation` and `phase-2-frontend-scaffold` go in parallel; `phase-4-analysis-pipeline` waits for `phase-3-domain-models` to land first. I review every phase before the next one fires.
-
-Loop: **spec → plan → code → test → commit → debt entry if a corner was cut**. Conventional Commits, no "done" mega-commits.
+Spec-first: each implementation slice starts with a short technical spec (file scope, contracts, acceptance criteria) committed *before* any code. The spec lives next to the code in `docs/specs/`, and the loop is **spec → code → test → commit → debt entry if a corner was cut**. I used coding agents to write the keystrokes, but the design decisions, the reviewing of every diff, and the test contracts are mine — the brief explicitly asks for engineers who can explain and maintain the code, and that's the bar this loop is built around. `docs/technical-debt/` is the running log of bugs I diagnosed and trade-offs I chose, kept in-tree so the *why* survives outside commit messages.
 
 ---
 

@@ -48,7 +48,7 @@ Three-tier with an async work queue. Five containerized processes (api, worker, 
 
 - **Frontend:** Vite + React 18 + TypeScript + React Router 6 + TanStack Query v5. Convert existing `.jsx` → `.tsx` keeping current visual design and component structure.
 - **Backend:** Python 3.12 + FastAPI + Pydantic v2 + SQLAlchemy 2 (async) + Alembic + Celery 5 + Redis 7 + PostgreSQL 16.
-- **STT:** `gpt-4o-transcribe-diarize` (`diarized_json` response → segments with `speaker`, `start`, `end`). Wrapped behind an `STTProvider` Protocol with a `whisper-1`-based fallback class for the README's "swap-in-one-line" claim.
+- **STT:** `gpt-4o-transcribe-diarize` (`diarized_json` response → segments with `speaker`, `start`, `end`). Wrapped behind an `STTProvider` Protocol; a `whisper-1`-based fallback class lives next to it so the provider swap is config-driven.
 - **LLM:** OpenAI `gpt-4o-mini` and `gpt-4.1-mini`, both wrapped behind an `LLMProvider` Protocol. Model is selected per-stage via env vars (`LLM_MODEL_TAGGING`, `LLM_MODEL_MOOD`, `LLM_MODEL_INSIGHTS`, `LLM_MODEL_SYNTHESIS`). All structured calls use `response_format={"type": "json_schema", ...}` driven by a Pydantic schema per stage.
 - **Storage:** Audio files on local disk under `./storage/audio/{call_id}.{ext}` (S3 swap is one Protocol away — note in README, do not implement).
 - **Infra:** docker-compose with `db`, `redis`, `api`, `worker`, `frontend` services. Single `Makefile` at repo root drives every workflow.
