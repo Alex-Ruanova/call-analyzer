@@ -20,9 +20,11 @@ infra/terraform.tfvars
 infra/.terraform/
 infra/terraform.tfstate
 infra/terraform.tfstate.backup
+infra/*.lock.info
 
 # Private docs (operator runbooks, not for reviewers)
 docs/deployment.md
+docs/interview-prep.md
 
 # IDE
 .DS_Store

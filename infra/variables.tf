@@ -7,13 +7,12 @@ variable "project" {
 variable "location" {
   description = "Azure region"
   type        = string
-  default     = "eastus"
+  default     = "westus2"
 }
 
-variable "pg_admin_user" {
-  description = "PostgreSQL admin username"
+variable "ssh_public_key" {
+  description = "SSH public key for VM access"
   type        = string
-  default     = "altur"
 }
 
 variable "pg_admin_password" {
@@ -47,11 +46,6 @@ variable "rate_limit_uploads_per_hour" {
 }
 
 variable "allowed_origins" {
-  description = "CORS allowed origin (your domain, e.g. https://yourdomain.com)"
-  type        = string
-}
-
-variable "frontend_domain" {
-  description = "Frontend domain for VITE_API_BASE_URL (e.g. yourdomain.com)"
+  description = "CORS allowed origin (e.g. https://altur.norvaru.com)"
   type        = string
 }

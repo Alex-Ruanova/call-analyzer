@@ -1,0 +1,79 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: altur
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: altur
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U altur"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  api:
+    image: ${ACR_LOGIN_SERVER}/altur-api:${IMAGE_TAG:-latest}
+    command: ["sh", "-c", "alembic -c /app/alembic/alembic.ini upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"]
+    ports:
+      - "8000:8000"
+    env_file: /app/.env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://altur:${POSTGRES_PASSWORD}@db:5432/altur
+      REDIS_URL: redis://redis:6379/0
+      AUDIO_STORAGE_DIR: /tmp/audio
+    volumes:
+      - audio_tmp:/tmp/audio
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/health')\""]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  worker:
+    image: ${ACR_LOGIN_SERVER}/altur-worker:${IMAGE_TAG:-latest}
+    env_file: /app/.env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://altur:${POSTGRES_PASSWORD}@db:5432/altur
+      REDIS_URL: redis://redis:6379/0
+      AUDIO_STORAGE_DIR: /tmp/audio
+    volumes:
+      - audio_tmp:/tmp/audio
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  frontend:
+    image: ${ACR_LOGIN_SERVER}/altur-frontend:${IMAGE_TAG:-latest}
+    ports:
+      - "80:80"
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  audio_tmp:
