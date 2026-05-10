@@ -90,13 +90,15 @@ At 30 workers × 4 slots = 120 concurrent connections, a pool size of 25 (with t
 
 #### 3. Audio Storage Swap (object storage)
 
-MVP uses local disk locally (`AUDIO_STORAGE_DIR=/app/storage/audio`). The **live Azure deploy already runs on Blob Storage** through the same `StorageProvider` Protocol — see `docs/infrastructure.md`. The S3 examples below are illustrative for the AWS port; the abstraction covers both.
+MVP uses local disk both locally (`AUDIO_STORAGE_DIR=/app/storage/audio`) and in the live single-VM deploy (`/tmp/audio` on the VM, shared between API and worker containers via bind mount). The `StorageProvider` Protocol (`backend/app/core/storage.py`) ships both `LocalAudioStorage` and `AzureBlobAudioStorage` — Blob is wired in code but unused in the current deployment because everything runs on one host. See `docs/infrastructure.md` for why the live deploy stayed on local disk.
+
+The swap to object storage becomes mandatory at the moment workers scale horizontally:
 
 ```python
-# Local: LocalAudioStorage (host volume)
+# Local + current single-VM deploy: LocalAudioStorage (host volume / bind mount)
 storage = LocalAudioStorage(base_path="/app/storage/audio")
 
-# Live Azure deploy: AzureBlobAudioStorage (already shipped)
+# Multi-host on Azure: AzureBlobAudioStorage (already shipped, env-flag away)
 storage = AzureBlobAudioStorage(account_url=..., container="audio")
 
 # AWS port: a new S3AudioStorage class implementing the same Protocol
