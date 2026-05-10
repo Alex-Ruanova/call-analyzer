@@ -33,7 +33,7 @@ jobs:
           push: true
           tags: ${{ secrets.ACR_LOGIN_SERVER }}/altur-frontend:${{ github.sha }},${{ secrets.ACR_LOGIN_SERVER }}/altur-frontend:latest
           build-args: |
-            VITE_API_BASE_URL=https://api.altur.norvaru.com
+            VITE_API_BASE_URL=https://altur.norvaru.com
           cache-from: type=registry,ref=${{ secrets.ACR_LOGIN_SERVER }}/altur-frontend:cache
           cache-to: type=registry,ref=${{ secrets.ACR_LOGIN_SERVER }}/altur-frontend:cache,mode=max
 
