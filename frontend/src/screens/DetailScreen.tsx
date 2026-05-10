@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { useParams } from "react-router-dom";
-import { useCall, useCallStatus, useTags, useClients, useUpdateParticipants, useCallNotes, useCreateNote, useUpdateNote, useDeleteNote, useUpdateSegment } from "../api/hooks";
+import { useCall, useCallStatus, useTags, useClients, useUpdateParticipants, useUpdateTags, useAssignClient, useCreateClient, useCallNotes, useCreateNote, useUpdateNote, useDeleteNote, useUpdateSegment } from "../api/hooks";
 import { useQueryClient } from "@tanstack/react-query";
 import { useSetCrumbOverride } from "../App";
 import { Icons, TagEditor, ClientPicker, getEmotion } from "../components/components";
@@ -35,14 +35,6 @@ function formatLanguage(code: string | null): string {
   return LANGUAGE_NAMES[lower] ?? lower.toUpperCase();
 }
 
-const STATUS_STEPS: Record<CallStatus, { index: number; label: string }> = {
-  pending:      { index: 0, label: "Decoding audio" },
-  transcribing: { index: 1, label: "Transcribing speech" },
-  analyzing:    { index: 3, label: "Analyzing sentiment" },
-  done:         { index: 5, label: "Done" },
-  failed:       { index: -1, label: "Failed" },
-};
-
 const ALL_STEPS = [
   "Decoding audio",
   "Transcribing speech",
@@ -51,9 +43,37 @@ const ALL_STEPS = [
   "Extracting insights",
 ];
 
-function ProcessingView({ status, errorMessage }: { status: CallStatus; errorMessage: string | null }) {
-  const stepInfo = STATUS_STEPS[status];
-  const activeStep = stepInfo?.index ?? 0;
+function formatFileSize(bytes: number): string {
+  if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  return `${(bytes / 1024).toFixed(0)} KB`;
+}
+
+const FALLBACK_RATIO = 0.25; // ~4x realtime, conservative default
+
+function formatEta(durationSeconds: number, elapsedSeconds: number, ratio: number | null): string {
+  const r = ratio ?? FALLBACK_RATIO;
+  const estimatedTotal = Math.ceil(durationSeconds * r) + 30;
+  const remaining = Math.max(0, estimatedTotal - elapsedSeconds);
+  if (remaining < 10) return "almost done…";
+  if (remaining < 60) return `~${remaining}s remaining`;
+  return `~${Math.ceil(remaining / 60)}m remaining`;
+}
+
+function ProcessingView({ status, progressStep, errorMessage, sizeBytes, durationSeconds, transcriptionRatio }: {
+  status: CallStatus;
+  progressStep: number;
+  errorMessage: string | null;
+  sizeBytes: number;
+  durationSeconds: number | null;
+  transcriptionRatio: number | null;
+}) {
+  const activeStep = progressStep;
+  const [elapsed, setElapsed] = useState(0);
+
+  useEffect(() => {
+    const t = setInterval(() => setElapsed((s) => s + 1), 1000);
+    return () => clearInterval(t);
+  }, []);
 
   if (status === "failed") {
     return (
@@ -93,7 +113,15 @@ function ProcessingView({ status, errorMessage }: { status: CallStatus; errorMes
         </div>
         <h2 style={{ fontSize: 18, fontWeight: 600, margin: 0, letterSpacing: "-0.01em" }}>Analyzing your call</h2>
         <p style={{ color: "var(--text-3)", fontSize: 13, margin: "6px 0 0" }}>
-          This usually takes about 30 seconds for a 5-minute call.
+          {formatFileSize(sizeBytes)} audio file
+          {durationSeconds != null && ` · ${formatDuration(durationSeconds)}`}
+        </p>
+        <p style={{ color: "var(--text-4)", fontSize: 12, margin: "4px 0 0", fontVariantNumeric: "tabular-nums" }}>
+          {status === "transcribing" && durationSeconds != null
+            ? formatEta(durationSeconds, elapsed, transcriptionRatio)
+            : Math.floor(elapsed / 60) > 0
+            ? `${Math.floor(elapsed / 60)}m ${elapsed % 60}s elapsed`
+            : `${elapsed}s elapsed`}
         </p>
       </div>
       <div className="card" style={{ padding: 18 }}>
@@ -144,6 +172,9 @@ export default function DetailScreen({ moodViz = "ribbon" }: DetailScreenProps) 
   const [clientName, setClientName] = useState<string | null | undefined>(undefined);
   const [participants, setParticipants] = useState<Participant[] | null>(null);
   const updateParticipantsMutation = useUpdateParticipants();
+  const updateTagsMutation = useUpdateTags();
+  const assignClientMutation = useAssignClient();
+  const createClientMutation = useCreateClient();
 
   // Debounced persist: when local participants edits land, push to backend after 600ms quiet.
   useEffect(() => {
@@ -162,6 +193,19 @@ export default function DetailScreen({ moodViz = "ribbon" }: DetailScreenProps) 
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [participants, id]);
+
+  // Debounced persist: when tags change, push to backend after 600ms quiet.
+  useEffect(() => {
+    if (tags === null) return;
+    const t = setTimeout(() => {
+      updateTagsMutation.mutate(
+        { callId: id, tagNames: tags.map((tag) => tag.name) },
+        { onSuccess: () => setTags(null) },
+      );
+    }, 600);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tags, id]);
   const [newNote, setNewNote] = useState("");
   const [tab, setTab] = useState<"summary" | "insights" | "emotions" | "notes">("summary");
   const [search, setSearch] = useState("");
@@ -173,14 +217,28 @@ export default function DetailScreen({ moodViz = "ribbon" }: DetailScreenProps) 
   const allTags = allTagsData ?? [];
   const allClients = clientsData ?? [];
 
+  const handleClientChange = (name: string) => {
+    setClientName(name);
+    const existing = allClients.find((c) => c.name === name);
+    if (existing) {
+      assignClientMutation.mutate({ callId: id, clientId: existing.id });
+    } else {
+      createClientMutation.mutate({ name }, {
+        onSuccess: (result) => {
+          assignClientMutation.mutate({ callId: id, clientId: result.id });
+        },
+      });
+    }
+  };
+
   // statusData acts as an *override*: only gate on it when it explicitly says the call is
   // in flight or failed. If statusData is absent (network blip, slow query), fall through
   // and let useCall render whatever it has — every failure must be visible.
   if (isProcessing) {
-    return <ProcessingView status={statusData.status} errorMessage={null} />;
+    return <ProcessingView status={statusData.status} progressStep={statusData.progress_step} errorMessage={null} sizeBytes={statusData.size_bytes} durationSeconds={statusData.duration_seconds} transcriptionRatio={statusData.transcription_ratio} />;
   }
   if (isFailed) {
-    return <ProcessingView status="failed" errorMessage={statusData?.error_message ?? null} />;
+    return <ProcessingView status="failed" progressStep={0} errorMessage={statusData?.error_message ?? null} sizeBytes={statusData.size_bytes} durationSeconds={statusData.duration_seconds} transcriptionRatio={statusData.transcription_ratio} />;
   }
 
   if (isError) return <div className="empty-state">Call not found.</div>;
@@ -247,7 +305,7 @@ export default function DetailScreen({ moodViz = "ribbon" }: DetailScreenProps) 
           )}
 
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
-            <ClientPicker value={currentClient ?? null} allClients={allClients} onChange={setClientName} />
+            <ClientPicker value={currentClient ?? null} allClients={allClients} onChange={handleClientChange} />
             <TagEditor tags={currentTags} allTags={allTags} onChange={setTags} />
           </div>
 

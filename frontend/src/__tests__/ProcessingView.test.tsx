@@ -15,8 +15,11 @@ import type { CallStatusResponse, CallDetail } from "../types";
 
 const baseStatus = (status: CallStatusResponse["status"]): CallStatusResponse => ({
   status,
-  progress_step: null,
+  progress_step: 0,
   error_message: null,
+  size_bytes: 5 * 1024 * 1024,
+  duration_seconds: 300,
+  transcription_ratio: null,
 });
 
 const doneCallDetail: Partial<CallDetail> = {
@@ -58,6 +61,9 @@ vi.mock("../api/hooks", () => ({
   useTags: () => ({ data: [] }),
   useClients: () => ({ data: [] }),
   useUpdateParticipants: () => ({ mutate: () => {} }),
+  useUpdateTags: () => ({ mutate: () => {} }),
+  useAssignClient: () => ({ mutate: () => {} }),
+  useCreateClient: () => ({ mutate: () => {} }),
   useCallNotes: () => ({ data: [] }),
   useCreateNote: () => ({ mutate: () => {}, isPending: false }),
   useUpdateNote: () => ({ mutate: () => {}, isPending: false }),
@@ -111,7 +117,7 @@ describe("DetailScreen — processing states", () => {
   });
 
   it("shows error card when status is failed", async () => {
-    mockStatusData = { status: "failed", progress_step: null, error_message: "STT provider returned 500" };
+    mockStatusData = { status: "failed", progress_step: 0, error_message: "STT provider returned 500", size_bytes: 1024, duration_seconds: null, transcription_ratio: null };
     mockCallData = undefined;
 
     renderDetail();
