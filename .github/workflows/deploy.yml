@@ -1,11 +1,8 @@
-name: Deploy Frontend
+name: Deploy
 
 on:
   push:
     branches: [main]
-    paths:
-      - 'frontend/**'
-      - 'docker-compose.prod.yml'
 
 jobs:
   build-and-deploy:
@@ -24,6 +21,28 @@ jobs:
           username: ${{ secrets.ACR_USERNAME }}
           password: ${{ secrets.ACR_PASSWORD }}
 
+      - name: Build and push API image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: docker/api.Dockerfile
+          platforms: linux/arm64
+          push: true
+          tags: ${{ secrets.ACR_LOGIN_SERVER }}/altur-api:latest
+          cache-from: type=registry,ref=${{ secrets.ACR_LOGIN_SERVER }}/altur-api:cache
+          cache-to: type=registry,ref=${{ secrets.ACR_LOGIN_SERVER }}/altur-api:cache,mode=max
+
+      - name: Build and push Worker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: docker/worker.Dockerfile
+          platforms: linux/arm64
+          push: true
+          tags: ${{ secrets.ACR_LOGIN_SERVER }}/altur-worker:latest
+          cache-from: type=registry,ref=${{ secrets.ACR_LOGIN_SERVER }}/altur-worker:cache
+          cache-to: type=registry,ref=${{ secrets.ACR_LOGIN_SERVER }}/altur-worker:cache,mode=max
+
       - name: Build and push Frontend image
         uses: docker/build-push-action@v5
         with:
@@ -31,7 +50,7 @@ jobs:
           file: frontend/Dockerfile
           platforms: linux/arm64
           push: true
-          tags: ${{ secrets.ACR_LOGIN_SERVER }}/altur-frontend:${{ github.sha }},${{ secrets.ACR_LOGIN_SERVER }}/altur-frontend:latest
+          tags: ${{ secrets.ACR_LOGIN_SERVER }}/altur-frontend:latest
           build-args: |
             VITE_API_BASE_URL=https://altur.norvaru.com
           cache-from: type=registry,ref=${{ secrets.ACR_LOGIN_SERVER }}/altur-frontend:cache
@@ -56,6 +75,6 @@ jobs:
             cd /app
             echo "${{ secrets.ACR_PASSWORD }}" | docker login ${{ secrets.ACR_LOGIN_SERVER }} -u ${{ secrets.ACR_USERNAME }} --password-stdin
             IMAGE_TAG=latest ACR_LOGIN_SERVER=${{ secrets.ACR_LOGIN_SERVER }} POSTGRES_PASSWORD=${{ secrets.POSTGRES_PASSWORD }} \
-              docker compose -f docker-compose.prod.yml pull frontend
+              docker compose -f docker-compose.prod.yml pull
             IMAGE_TAG=latest ACR_LOGIN_SERVER=${{ secrets.ACR_LOGIN_SERVER }} POSTGRES_PASSWORD=${{ secrets.POSTGRES_PASSWORD }} \
-              docker compose -f docker-compose.prod.yml up -d frontend
+              docker compose -f docker-compose.prod.yml up -d
