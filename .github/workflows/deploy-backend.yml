@@ -57,7 +57,7 @@ jobs:
           script: |
             cd /app
             echo "${{ secrets.ACR_PASSWORD }}" | docker login ${{ secrets.ACR_LOGIN_SERVER }} -u ${{ secrets.ACR_USERNAME }} --password-stdin
-            IMAGE_TAG=${{ github.sha }} ACR_LOGIN_SERVER=${{ secrets.ACR_LOGIN_SERVER }} POSTGRES_PASSWORD=${{ secrets.POSTGRES_PASSWORD }} \
+            IMAGE_TAG=latest ACR_LOGIN_SERVER=${{ secrets.ACR_LOGIN_SERVER }} POSTGRES_PASSWORD=${{ secrets.POSTGRES_PASSWORD }} \
               docker compose -f docker-compose.prod.yml pull api worker
-            IMAGE_TAG=${{ github.sha }} ACR_LOGIN_SERVER=${{ secrets.ACR_LOGIN_SERVER }} POSTGRES_PASSWORD=${{ secrets.POSTGRES_PASSWORD }} \
+            IMAGE_TAG=latest ACR_LOGIN_SERVER=${{ secrets.ACR_LOGIN_SERVER }} POSTGRES_PASSWORD=${{ secrets.POSTGRES_PASSWORD }} \
               docker compose -f docker-compose.prod.yml up -d api worker
