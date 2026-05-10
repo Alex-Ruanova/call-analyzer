@@ -1,4 +1,4 @@
-.PHONY: up down migrate seed test eval logs shell-api shell-worker psql fmt lint clean
+.PHONY: up down migrate seed-demo test eval logs shell-api shell-worker psql fmt lint clean
 
 up:
 	docker compose up --build
@@ -9,7 +9,7 @@ down:
 migrate:
 	docker compose exec api python -m alembic -c alembic/alembic.ini upgrade head
 
-seed:
+seed-demo:
 	docker compose exec api python /app/scripts/seed.py
 
 test:

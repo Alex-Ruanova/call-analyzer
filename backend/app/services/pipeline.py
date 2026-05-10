@@ -30,7 +30,7 @@ from app.models.participant import Participant
 from app.models.tag import Tag
 from app.models.transcript import Transcript, TranscriptSegment
 from app.providers.base import DiarizedSegment, DiarizedTranscript, LLMProvider, STTProvider
-
+from app.llm.system_tags import SYSTEM_TAG_NAMES
 logger = logging.getLogger(__name__)
 
 _BUCKET_LUA = """
@@ -492,14 +492,7 @@ async def tag_stage(
 
         transcript_text = _build_transcript_text(segments)
 
-        # Pull the taxonomy from the live DB so the LLM is constrained to the
-        # tags we actually curate. If the table is empty (first run on a fresh
-        # install before seed) fall back to a small built-in list.
-        taxonomy_rows = await session.execute(select(Tag.name).order_by(Tag.name.asc()))
-        taxonomy = [r[0] for r in taxonomy_rows.fetchall()]
-        if not taxonomy:
-            taxonomy = list(tags_prompts.FALLBACK_TAXONOMY)
-
+        taxonomy = list(SYSTEM_TAG_NAMES)
         prompt = tags_prompts.build_prompt(transcript_text, taxonomy)
 
         llm_result = await llm_provider.complete_structured(
@@ -513,16 +506,23 @@ async def tag_stage(
             dropped = set(all_tag_names) - valid_taxonomy
             logger.warning("tag_stage: dropped %d out-of-taxonomy tags: %s", len(dropped), dropped)
 
+        from app.llm.system_tags import SYSTEM_TAGS
+        system_tag_colors = dict(SYSTEM_TAGS)
+
         for tag_name in tag_names:
             tag_stmt = select(Tag).where(Tag.name == tag_name)
             tag_result = await session.execute(tag_stmt)
             tag = tag_result.scalar_one_or_none()
 
-            # Only happens when the DB was empty and we used FALLBACK_TAXONOMY.
-            # In the steady state the tag is guaranteed to exist (we read it
-            # from the DB above).
+            # Self-heal: if the data migration didn't run (e.g. test DB), insert
+            # the canonical row with its curated color rather than a colorless
+            # is_system=False orphan.
             if tag is None:
-                tag = Tag(name=tag_name, is_system=False)
+                tag = Tag(
+                    name=tag_name,
+                    color=system_tag_colors.get(tag_name, "#6b7280"),
+                    is_system=True,
+                )
                 session.add(tag)
                 await session.flush()
 

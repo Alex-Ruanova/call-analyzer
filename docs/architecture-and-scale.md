@@ -88,18 +88,19 @@ pgbouncer:
 
 At 30 workers × 4 slots = 120 concurrent connections, a pool size of 25 (with transaction-mode multiplexing) is sufficient.
 
-#### 3. Audio Storage Swap (S3)
+#### 3. Audio Storage Swap (object storage)
 
-MVP uses local disk (`AUDIO_STORAGE_DIR=/app/storage/audio`). Production swaps via Protocol abstraction:
+MVP uses local disk locally (`AUDIO_STORAGE_DIR=/app/storage/audio`). The **live Azure deploy already runs on Blob Storage** through the same `StorageProvider` Protocol — see `docs/infrastructure.md`. The S3 examples below are illustrative for the AWS port; the abstraction covers both.
 
 ```python
-# Current: LocalStorage provider
-storage = LocalStorage(base_path="/app/storage/audio")
-audio_bytes = storage.read(call_id)
+# Local: LocalAudioStorage (host volume)
+storage = LocalAudioStorage(base_path="/app/storage/audio")
 
-# Production: S3Storage provider (one-line swap)
-storage = S3Storage(bucket="altur-audio", region="us-west-2")
-audio_bytes = await storage.read_async(call_id)
+# Live Azure deploy: AzureBlobAudioStorage (already shipped)
+storage = AzureBlobAudioStorage(account_url=..., container="audio")
+
+# AWS port: a new S3AudioStorage class implementing the same Protocol
+# storage = S3AudioStorage(bucket="altur-audio", region="us-west-2")
 ```
 
 **Cost:** S3 ≈ $0.023/GB/month + $0.40/10k GET reqs. For 10k calls/day × 5MB avg = 50GB/month ≈ $1.50/month storage + $0.40 retrieval.
@@ -202,7 +203,7 @@ delete_before = datetime.now() - timedelta(days=90)
 old_calls = db.query(Call).filter(Call.created_at < delete_before).all()
 
 for call in old_calls:
-    await storage.delete(call.audio_path)  # Delete from S3
+    await storage.delete(call.filename)
     db.execute(
         "UPDATE transcripts SET raw_payload_json = NULL WHERE call_id = ?",
         call.id
@@ -221,7 +222,7 @@ async def delete_call(call_id: UUID, user_id: UUID):
     call = db.query(Call).filter(Call.id == call_id, Call.user_id == user_id).one()
     
     # Cascade delete
-    await storage.delete(call.audio_path)
+    await storage.delete(call.filename)
     db.delete(db.query(Transcript).filter(Transcript.call_id == call_id))
     db.delete(db.query(Analysis).filter(Analysis.call_id == call_id))
     db.delete(call)
@@ -289,7 +290,7 @@ producer.send("call.transcribed", {
 })
 
 # Phase 2: Mood + tagging + insights (consumer 2–4, in parallel)
-# Phase 3: Alerts (consumer 5: "if buying_signal + budget_band > $50k, send Slack")
+# Phase 3: Alerts (consumer 5: "if Insight.kind='buying-signal' with weight ≥ 1.5, send Slack")
 ```
 
 Decouples producers from consumers. New consumer = new feature (e.g., data warehouse pipeline, real-time Slack alerts) without touching core pipeline.

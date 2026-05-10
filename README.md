@@ -23,10 +23,18 @@ cp .env.example .env
 ### 2. Run
 
 ```bash
-make up && make seed
+make up
 ```
 
-This spins up all services and seeds a sample call + user. **Migrations run automatically** when the API container starts (it runs `alembic upgrade head` before launching uvicorn). If you ever need to run them manually, use `make migrate`.
+This spins up all services. **Migrations run automatically** when the API container starts. If you ever need to run them manually, use `make migrate`.
+
+To also load demo clients, calls, transcripts and analyses so the dashboard renders something on first load:
+
+```bash
+make seed-demo
+```
+
+The demo dataset is purely illustrative and entirely optional — skip it if you want to upload your own audio against a clean DB.
 
 ### 3. Access
 
@@ -92,9 +100,9 @@ Runs pytest (backend) + Vitest (frontend) in Docker. Tests are minimal and integ
 make eval
 ```
 
-Runs the model evaluation script against a fixture set of human-annotated calls. Outputs precision/recall/F1 per tag, cost per stage, and prompt version tracking to `docs/model-eval/results.json`.
+Runs each LLM stage (mood, tags, insights, synthesis) on a fixture set of transcripts side-by-side across `gpt-4o-mini` and `gpt-4.1-mini`. Writes per-stage cost, latency, token usage, and structured outputs to `docs/model-eval/results.json` so the two models can be diffed manually.
 
-See [docs/prompt-design.md](docs/prompt-design.md) for the evaluation strategy and taxonomy.
+This is a model-comparison harness, not a scored benchmark — there is no precision/recall/F1 against ground-truth annotations yet. See [docs/prompt-design.md](docs/prompt-design.md) for the taxonomy and the intended evaluation strategy.
 
 ---
 
@@ -129,27 +137,87 @@ stt = DeepgramSTT(model="nova-2")
 
 ---
 
+## Submission checklist (Altur brief)
+
+Mapped to `docs/altur-instructions.md`. Where a feature is partial or deliberately stubbed, the link points to the doc that explains the trade-off.
+
+**Required (section 2):**
+
+- [x] Web app to upload audio (WAV / MP3) — `frontend/src/screens/UploadScreen`.
+- [x] Backend STT — OpenAI `gpt-4o-transcribe-diarize` via `STTProvider` Protocol.
+- [x] LLM analysis: summary, tags, justified taxonomy, prompt design, evaluation strategy — see [docs/prompt-design.md](docs/prompt-design.md) and `make eval`.
+- [x] Persistence: filename, upload timestamp, transcript, summary, tags — plus mood-per-segment, sentiment, emotion distribution, talk:listen, cost.
+- [x] List + detail UI — `ListScreen`, `DetailScreen`, plus `Dashboard`, `ClientDetail`, `Settings`.
+- [x] Coherent API + UI workflows — upload → status polling → detail; tag overrides; export; soft delete; phantom-speaker review queue.
+- [x] Testing strategy + tests — pytest (backend integration, real Postgres) + Vitest (frontend); see `Running Tests` below.
+- [x] Solid error handling — Result-style boundaries on provider calls, retries on transient failures, status=`failed` surfaced in UI, daily budget cap, per-IP rate limit.
+- [x] README with setup, env, assumptions, architecture, what's next.
+- [x] Meaningful Git history (`git log --oneline` shows feature/fix/docs/refactor commits, no "done" mega-commit).
+- [x] 30-minute calls — chunked STT (`_build_chunk_intervals`), upload returns 202 in <200 ms, frontend polls.
+- [x] 1k recordings burst — Celery horizontally scalable, Redis token bucket on OpenAI, `DAILY_BUDGET_USD` cap, idempotent dedup-on-upload by content hash.
+
+**Bonus (section 3):**
+
+- [x] Speaker / role detection — diarization + `Participant.side` (rep / customer) drives talk:listen and overall sentiment.
+- [x] Intent / mood / emotion — per-segment mood, overall sentiment score, emotion distribution.
+- [x] Extra insights — pain points, buying signals, next-step commitments, objections (structured JSON via OpenAI `response_format=json_schema`).
+- [x] Tag overrides — inline `TagEditor` on `DetailScreen`, persisted as `CallTag(source='user')`.
+- [x] Docker-compose — `make up` boots api + worker + db + redis + frontend with auto-migrate.
+- [x] Analytics dashboard — total calls, sentiment trend, tag distribution, talk:listen, total spend, per-client rollups.
+- [x] Edge-case tests + responsive UI polish.
+- [x] **Super extra:** JSON export — `GET /api/calls/{id}/export` (audio metadata + transcript + summary + tags + overrides).
+- [x] **Super extra:** Live deployment — Azure Container Apps + Postgres flexible server + Blob storage; Terraform in `infra/`. Resource map and design choices in [docs/infrastructure.md](docs/infrastructure.md). Operator runbook is private (gitignored).
+- [ ] **Super extra (skipped on purpose):** Multi-user auth. Single-tenant API-key gate is wired (`AUTH_ENABLED`) but full OAuth2 + RBAC was a 4–6h scope I traded for depth on the analysis pipeline. See `docs/improvements.md → Auth, multi-tenancy, RBAC` for the design I'd ship.
+
+**Architecture & Scale (section 5):** all four questions answered in [docs/architecture-and-scale.md](docs/architecture-and-scale.md) — 10k/day, bottlenecks, production evolution, PII handling.
+
+---
+
 ## What I'd Add With More Time
 
-The full backlog (sized, prioritized) lives in [docs/improvements.md](docs/improvements.md) — both quick wins (≤2h each) and strategic items.
+The full backlog (sized, prioritized) lives in [docs/improvements.md](docs/improvements.md). I'd skip the tactical polish and pick items that materially change what the product can do — and that I can defend in interview:
 
-Top 4 if I had ~2 more hours:
+1. **Reanalyze in place — `POST /api/calls/{id}/reanalyze`.** Reuses `Transcript` rows, only re-runs `tag_stage` + `analyze_stage`. Same call_id, no duplicate rows, no re-paying STT (cents instead of dollars). This is the canonical tool for prompt iteration; without it, every prompt tweak forces a re-upload and creates ghost calls. ~45 min.
 
-1. **Configure `DAILY_BUDGET_USD`** before public deploy (5 min).
-2. **Replace hardcoded sentiment copy** in `DetailScreen` (30 min).
-3. **Cost breakdown by stage** in `DetailScreen` (20 min).
-4. **`POST /api/calls/{id}/reanalyze`** — re-run analysis without re-paying STT, the canonical tool for prompt iteration (30–45 min).
+2. **Semantic search across calls + clients with `pgvector`.** `text-embedding-3-small` on every transcript chunk, HNSW index in Postgres. Unlocks (a) global search ("show me every call mentioning ACME"), (b) cheap tag suggestion via nearest-neighbours instead of per-call LLM, (c) RAG into the synthesis prompt with top-k similar past calls — sales context the model otherwise hallucinates. The interesting design question is when retrieval-augmented tagging beats prompt-only tagging on cost-per-correct-tag — `make eval` already has the harness.
 
-Strategic items (auth, S3, semantic search with pgvector, real-time SSE, event-driven backbone, voice-print identification, PII hardening) are detailed in `docs/improvements.md`.
+3. **Voice-print identification across calls.** Per-call diarization gives `SPEAKER_00` / `SPEAKER_01`; voiceprint embeddings (`pyannote-audio` / `Resemblyzer`) collapse those into stable rep / client identities across the corpus. Required for any per-rep coaching dashboard, but the trade-off is a human-in-the-loop confirmation flow on first match — false positives are damaging.
+
+4. **Event-driven backbone (Redpanda / Kafka).** Today Celery is fine. The reason to migrate is the *second* consumer of `call.tagged`: real-time analytics, audit log for compliance, retraining loop on tag overrides, billing. Stages become handlers on `call.uploaded → call.transcribed → call.tagged → call.analyzed`. Different operational profile (offsets, replays, schema registry); only worth it once a second consumer exists.
+
+5. **PII redaction pass before LLM stages.** Regex + small NER for names / emails / phones, applied between STT and the LLM stages. Pairs with retention policy (audio TTL, redacted-only transcripts after 90 days) and per-row audit log. The interesting bit is measuring redaction accuracy — false negatives leak PII, false positives destroy analysis quality.
+
+The tactical wins (cost-by-stage UI, hardcoded copy in `DetailScreen`, conversion-rate KPI, tag management screen) are listed under `docs/improvements.md → Quick wins` — I'd batch them in a second 2-hour pass but they're not what I'd lead with.
+
+---
+
+## How I worked
+
+I work in a spec-driven loop with multi-agent execution. Spec-driven development means every phase starts with a short written technical spec — file scope, contracts, acceptance criteria — that I commit *before* writing any code. From there I dispatch coding agents (Claude Code) against the spec and review their output against the same criteria.
+
+I work this way because the spec is where the real thinking happens, and I refuse to delegate that step. PRDs and phase specs are drafted with a dedicated skill, but I treat the first pass as a draft, never as truth — I read every line, audit it against what I actually want, push back, edit, and iterate until the document reflects my decision, not the model's. Only then does any coding agent run. The agents do the keystrokes; I never let them set direction. Once code lands, I read the full diff against the spec, run it locally, and write tests around the contracts the spec defined — testing is how I confirm the agent built what I asked for, not just something that compiles. The result is that the spec, the diff, the tests, and the resulting code all live in git side by side, and I (or anyone else) can reconstruct *why* a piece of code looks the way it does months later without archaeology.
+
+The folder layout reflects this loop:
+
+- **`docs/mvp/prd.md`** — the product brief: *what* we're building and *why*. Scope, success criteria, architecture one-pager, invariants, what's explicitly out. Source of truth for product intent.
+- **`docs/specs/`** — one phase spec per implementation slice. Each spec is *how* the code should look: file scope, directory layout, contracts, acceptance criteria, dependencies on prior phases. This is the document each coding agent runs against.
+- **`docs/technical-debt/`** — one numbered entry per compromise *or* bug I've fixed. Each entry carries metadata (state, date, files touched), the root cause, the fix applied (or the temporary workaround), and what "clean" looks like if it's still pending. Two uses in one place: pending entries are debt I'm tracking; resolved entries are a written record of bugs I diagnosed and corrected, so the *why* of the fix doesn't get lost in a commit message. Feeds directly into `docs/improvements.md`.
+
+I run this with a roster of specialized agents — a backend agent for FastAPI / SQLAlchemy / Celery work, a frontend agent for React + TanStack, a code-reviewer agent that audits diffs against the spec, a QA agent for test coverage, and a debugger agent reserved for when the first pass doesn't converge. The `/build` command takes a PRD with orchestration metadata, builds the dependency graph between phases, and runs them — sequentially when phases depend on each other, in parallel teams when they don't. So `phase-1-backend-foundation` and `phase-2-frontend-scaffold` go in parallel; `phase-4-analysis-pipeline` waits for `phase-3-domain-models` to land first. I review every phase before the next one fires.
+
+Loop: **spec → plan → code → test → commit → debt entry if a corner was cut**. Conventional Commits, no "done" mega-commits.
 
 ---
 
 ## Documentation
 
+- [docs/mvp/prd.md](docs/mvp/prd.md) — Product brief written before any code: scope, invariants, what's out.
+- [docs/specs/](docs/specs/) — Per-phase technical specs (the prompts I gave to coding agents).
 - [docs/prompt-design.md](docs/prompt-design.md) — Tag taxonomy, per-stage prompts, evaluation strategy.
 - [docs/architecture-and-scale.md](docs/architecture-and-scale.md) — Happy path, scaling to 10k/day, PII handling, production evolution.
+- [docs/infrastructure.md](docs/infrastructure.md) — Live deployment on Azure: resource map (`infra/` Terraform), why each service, what's parametrized, production gaps.
 - [docs/improvements.md](docs/improvements.md) — Forward-looking backlog (quick wins + strategic).
-- [docs/technical-debt/](docs/technical-debt/) — One entry per known gap or design decision worth flagging (sentiment numeric vs categorical, language detection, participants persistence, dashboard label honesty, etc.).
+- [docs/technical-debt/](docs/technical-debt/) — One entry per known gap or design decision worth flagging (sentiment numeric vs categorical, language detection, participants persistence, notes persistence, phantom-speaker review queue, etc.).
 
 ---
 

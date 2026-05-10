@@ -1,9 +1,16 @@
 #!/usr/bin/env python3
 """
-Seed the database with sample clients, calls, transcripts, analyses, tags, insights,
-and action items so a reviewer can immediately see a populated dashboard.
+Seed the database with demo data only.
+
+Inserts sample clients, calls, transcripts, analyses, insights and action items
+so the dashboard renders something on first load. Purely illustrative — skip it
+if you want to upload your own audio against a clean DB.
+
+System tags are NOT seeded here; they are upserted by Alembic migration 0007
+(see backend/app/llm/system_tags.py for the canonical list).
 
 Idempotent: checks for existence per-table before inserting; re-running is safe.
+
 Run inside the api container: python /app/scripts/seed.py
 Or locally (with DATABASE_URL set): python scripts/seed.py
 """
@@ -27,6 +34,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.core.config import settings
+from app.llm.system_tags import SYSTEM_TAG_NAMES
 from app.models.analysis import Analysis
 from app.models.call import Call
 from app.models.client import Client
@@ -43,20 +51,6 @@ CLIENTS = [
     {"name": "Northwind Co", "industry": "Retail", "owner": "Alex Chen"},
     {"name": "Acme Corp", "industry": "Manufacturing", "owner": "Jordan Lee"},
     {"name": "Summit Labs", "industry": "Healthcare", "owner": "Morgan Kim"},
-]
-
-TAGS_DATA = [
-    {"name": "discovery", "color": "#10b981", "is_system": True},
-    {"name": "demo", "color": "#22d3ee", "is_system": True},
-    {"name": "objection-handling", "color": "#f59e0b", "is_system": True},
-    {"name": "pricing-discussion", "color": "#f43f5e", "is_system": True},
-    {"name": "follow-up-agreed", "color": "#a78bfa", "is_system": True},
-    {"name": "positive-outcome", "color": "#10b981", "is_system": True},
-    {"name": "feature-request", "color": "#0ea5e9", "is_system": True},
-    {"name": "onboarding", "color": "#6366f1", "is_system": True},
-    {"name": "renewal", "color": "#6366f1", "is_system": True},
-    # Catch-all for calls the LLM cannot place into any of the above.
-    {"name": "other", "color": "#6b7280", "is_system": True},
 ]
 
 now = datetime.utcnow()
@@ -249,17 +243,17 @@ CALLS_DATA = [
 ]
 
 
-async def seed(session: AsyncSession) -> None:
-    # ---- Tags (upsert by name) ----
-    tag_map: dict[str, Tag] = {}
-    for td in TAGS_DATA:
-        result = await session.execute(select(Tag).where(Tag.name == td["name"]))
-        tag = result.scalar_one_or_none()
-        if tag is None:
-            tag = Tag(name=td["name"], color=td["color"], is_system=td["is_system"])
-            session.add(tag)
-            await session.flush()
-        tag_map[td["name"]] = tag
+async def seed_demo(session: AsyncSession) -> None:
+    """Insert sample clients/calls/transcripts/analyses for dashboard demos."""
+    # System tags must already exist (upserted by Alembic migration 0007).
+    result = await session.execute(select(Tag))
+    tag_map: dict[str, Tag] = {t.name: t for t in result.scalars().all()}
+    missing = [n for n in SYSTEM_TAG_NAMES if n not in tag_map]
+    if missing:
+        raise RuntimeError(
+            f"System tags missing from DB: {missing}. "
+            "Run `make migrate` to apply migration 0007 before seeding demo data."
+        )
 
     # ---- Clients (upsert by name) ----
     client_objs: list[Client] = []
@@ -273,7 +267,7 @@ async def seed(session: AsyncSession) -> None:
         client_objs.append(client)
 
     # ---- Calls ----
-    tag_names = [td["name"] for td in TAGS_DATA]
+    tag_names = SYSTEM_TAG_NAMES
 
     for call_data in CALLS_DATA:
         # Idempotency: skip if a call with this title for this client already exists
@@ -366,14 +360,14 @@ async def seed(session: AsyncSession) -> None:
         ))
 
     await session.commit()
-    print(f"Seed complete: {len(CLIENTS)} clients, {len(CALLS_DATA)} calls")
+    print(f"Demo seeded: {len(CLIENTS)} clients, {len(CALLS_DATA)} calls")
 
 
 async def main() -> None:
     engine = create_async_engine(settings.DATABASE_URL)
     factory = async_sessionmaker(engine, expire_on_commit=False)
     async with factory() as session:
-        await seed(session)
+        await seed_demo(session)
     await engine.dispose()
 
 

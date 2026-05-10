@@ -1,5 +1,7 @@
 # Call Analyzer — MVP
 
+> **Historical document.** This is the PRD as written *before* the build started — the input that drove `/build` and every phase spec. The shipped code diverged in a few places (e.g. action-items removed per technical-debt #15, insight kinds expanded, taxonomy renamed). The README, `docs/architecture-and-scale.md`, and `docs/prompt-design.md` describe what's actually shipping today. Divergences are tracked in `docs/technical-debt/`.
+
 ## Overview
 
 Altur is a sales-call intelligence app: users upload sales-call recordings (MP3 / WAV, up to 30 minutes, batches up to ~1k), the backend transcribes with diarization, the LLM extracts structured insights (summary, tags, mood per segment, action items, pain points, buying signals), and the existing React frontend renders dashboard / list / detail / clients screens against the data.
@@ -306,7 +308,7 @@ file_scope:
   - [x] 7.4 `docs/prompt-design.md` — proposed tag taxonomy with justification, prompt-by-stage with version, evaluation strategy ("how would you measure tagging quality over time": per-stage labelled fixtures, agreement rate vs. human labels, drift detection by tracking new tag emergence per week).
   - [x] 7.5 `docs/architecture-and-scale.md` — answers to the 4 mandatory questions in `altur-instructions.md` §5 (10k calls/day scaling, bottlenecks, prod changes, PII handling). Must also document the following concrete production-evolution paths (none implemented in MVP, all framed as "what I'd change for production" with the trigger condition that justifies the change):
 
-    - **Semantic search + embeddings layer.** `text-embedding-3-small` on every transcript chunk, stored in Postgres with `pgvector` (HNSW index). Unlocks (a) global search across calls/clients/transcripts (exactly the "search for client X and find every transcript that mentions them" feature in `docs/ideas/ideas.md`), (b) similarity-based tag suggestion as a cheaper alternative to per-call LLM tagging at scale, (c) clustering pain points / objections across thousands of calls without re-running the LLM, (d) RAG into the synthesis prompt with top-k similar past calls. Trade-offs: extra storage, embed-on-write latency, HNSW vs IVFFlat index choice, re-embedding when the embedding model revs.
+    - **Semantic search + embeddings layer.** `text-embedding-3-small` on every transcript chunk, stored in Postgres with `pgvector` (HNSW index). Unlocks (a) global search across calls/clients/transcripts ("search for client X and find every transcript that mentions them"), (b) similarity-based tag suggestion as a cheaper alternative to per-call LLM tagging at scale, (c) clustering pain points / objections across thousands of calls without re-running the LLM, (d) RAG into the synthesis prompt with top-k similar past calls. Trade-offs: extra storage, embed-on-write latency, HNSW vs IVFFlat index choice, re-embedding when the embedding model revs.
 
     - **Real-time progress via SSE/WebSocket.** Today the frontend polls `GET /api/calls/{id}/status` every 1.5 s. At higher volume that's wasteful. Swap polling for Server-Sent Events backed by Redis pub/sub: the Celery worker `PUBLISH`es stage transitions, the API holds an SSE connection per active call, browsers get push updates. Tradeoff: stickier sessions, harder to scale behind a stateless load balancer.
 
