@@ -118,3 +118,6 @@ class CallStatusOut(BaseModel):
     status: str
     progress_step: int
     error_message: str | None
+    size_bytes: int
+    duration_seconds: float | None
+    transcription_ratio: float | None

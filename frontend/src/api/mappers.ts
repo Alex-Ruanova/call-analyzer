@@ -114,6 +114,9 @@ export interface BackendCallStatus {
   status: string;
   progress_step: number;
   error_message: string | null;
+  size_bytes: number;
+  duration_seconds: number | null;
+  transcription_ratio: number | null;
 }
 
 export interface BackendClientOut {
@@ -179,16 +182,6 @@ export interface BackendEmotion {
 // ---- Progress step mapping ----
 // Backend _PROGRESS_MAP: {pending:0, transcribing:1, analyzing:3, done:5, failed:-1}
 // The status endpoint returns the numeric step; we map the status string directly.
-
-const PROGRESS_STEP_LABELS: Record<number, string> = {
-  0: "Decoding",
-  1: "Transcribing",
-  2: "Transcribing",
-  3: "Analyzing",
-  4: "Analyzing",
-  5: "Done",
-  [-1]: "Failed",
-};
 
 // ---- Speaker palette ----
 
@@ -350,12 +343,13 @@ export function mapCallDetail(raw: BackendCallDetail): CallDetail {
 }
 
 export function mapCallStatus(raw: BackendCallStatus): CallStatusResponse {
-  const stepLabel = PROGRESS_STEP_LABELS[raw.progress_step] ?? null;
-
   return {
     status: raw.status as CallStatus,
-    progress_step: stepLabel,
+    progress_step: raw.progress_step,
     error_message: raw.error_message,
+    size_bytes: raw.size_bytes,
+    duration_seconds: raw.duration_seconds,
+    transcription_ratio: raw.transcription_ratio,
   };
 }
 

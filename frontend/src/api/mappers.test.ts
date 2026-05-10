@@ -166,10 +166,10 @@ describe("mapDashboard — divide-by-zero guard on sentiment_trend", () => {
 });
 
 describe("mapCallStatus", () => {
-  it("maps progress_step 3 to 'Analyzing'", () => {
-    const raw: BackendCallStatus = { status: "analyzing", progress_step: 3, error_message: null };
+  it("passes progress_step through as a number", () => {
+    const raw: BackendCallStatus = { status: "analyzing", progress_step: 3, error_message: null, size_bytes: 1048576, duration_seconds: 300, transcription_ratio: 0.18 };
     const result = mapCallStatus(raw);
-    expect(result.progress_step).toBe("Analyzing");
+    expect(result.progress_step).toBe(3);
     expect(result.status).toBe("analyzing");
   });
 });
@@ -195,10 +195,10 @@ describe("mapCallDetail — analysis reshape", () => {
 });
 
 describe("mapCallStatus — failed state", () => {
-  it("maps progress_step -1 to 'Failed'", () => {
-    const raw: BackendCallStatus = { status: "failed", progress_step: -1, error_message: "timeout" };
+  it("passes progress_step through as a number on failed status", () => {
+    const raw: BackendCallStatus = { status: "failed", progress_step: 0, error_message: "timeout", size_bytes: 512, duration_seconds: null, transcription_ratio: null };
     const result = mapCallStatus(raw);
-    expect(result.progress_step).toBe("Failed");
+    expect(result.progress_step).toBe(0);
     expect(result.status).toBe("failed");
     expect(result.error_message).toBe("timeout");
   });

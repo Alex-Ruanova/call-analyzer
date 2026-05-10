@@ -41,7 +41,9 @@ from app.schemas.call import (
     TranscriptSegmentOut,
 )
 from app.schemas.tag import TagOut
-from app.tasks.process_call import process_call
+from app.tasks.process_call import process_call, _RATIO_KEY
+from app.providers.dependencies import get_redis
+import redis.asyncio as aioredis
 
 logger = logging.getLogger(__name__)
 
@@ -438,6 +440,7 @@ async def get_call(
 async def get_call_status(
     call_id: int,
     session: Annotated[AsyncSession, Depends(get_session)],
+    redis: Annotated[aioredis.Redis, Depends(get_redis)],
 ) -> CallStatusOut:
     call = await session.get(Call, call_id)
     if not call:
@@ -446,10 +449,22 @@ async def get_call_status(
             message=f"Call {call_id} not found",
             status_code=404,
         )
+    transcription_ratio: float | None = None
+    try:
+        raw = await redis.lrange(_RATIO_KEY, 0, -1)
+        if raw:
+            values = sorted(float(v) for v in raw)
+            mid = len(values) // 2
+            transcription_ratio = values[mid] if len(values) % 2 else (values[mid - 1] + values[mid]) / 2
+    except Exception:
+        pass
     return CallStatusOut(
         status=call.status,
-        progress_step=_PROGRESS_MAP.get(call.status, 0),
+        progress_step=call.progress_step,
         error_message=call.error_message,
+        size_bytes=call.size_bytes,
+        duration_seconds=call.duration_seconds,
+        transcription_ratio=transcription_ratio,
     )
 
 

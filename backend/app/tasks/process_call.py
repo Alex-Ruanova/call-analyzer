@@ -117,6 +117,7 @@ async def _set_status(
     call_id: int,
     status: str,
     error_message: str | None = None,
+    progress_step: int | None = None,
 ) -> None:
     async with session_factory() as session:
         call = await session.get(Call, call_id)
@@ -124,7 +125,38 @@ async def _set_status(
             call.status = status
             if error_message is not None:
                 call.error_message = error_message[:500]
+            if progress_step is not None:
+                call.progress_step = progress_step
             await session.commit()
+
+
+async def _set_progress(
+    session_factory: async_sessionmaker,
+    call_id: int,
+    step: int,
+) -> None:
+    async with session_factory() as session:
+        call = await session.get(Call, call_id)
+        if call is not None:
+            call.progress_step = step
+            await session.commit()
+
+
+_RATIO_KEY = "transcription:ratios"
+_RATIO_MAX_SAMPLES = 20
+
+
+async def _record_transcription_ratio(
+    redis_client: aioredis.Redis,
+    duration: float | None,
+    elapsed_seconds: float,
+) -> None:
+    if not duration or duration < 10 or elapsed_seconds < 1:
+        return
+    ratio = elapsed_seconds / duration
+    await redis_client.lpush(_RATIO_KEY, str(ratio))
+    await redis_client.ltrim(_RATIO_KEY, 0, _RATIO_MAX_SAMPLES - 1)
+    await redis_client.expire(_RATIO_KEY, 60 * 60 * 24 * 30)
 
 
 async def _run_pipeline(
@@ -145,18 +177,26 @@ async def _run_pipeline(
     }
 
     try:
-        await _set_status(session_factory, call_id, "transcribing")
+        await _set_status(session_factory, call_id, "transcribing", progress_step=1)
 
         await bucket.acquire()
-        transcript, stt_cost = await transcribe_stage(
+        stt_start = asyncio.get_running_loop().time()
+        transcript, stt_cost, audio_duration = await transcribe_stage(
             call_id, session_factory, stt_provider, llm_provider
         )
+        stt_elapsed = asyncio.get_running_loop().time() - stt_start
         cost["stt"] = stt_cost
 
-        await _set_status(session_factory, call_id, "analyzing")
+        await _record_transcription_ratio(redis_client, audio_duration, stt_elapsed)
+
+        # Step 2: transcript ready, about to run LLM analysis
+        await _set_status(session_factory, call_id, "analyzing", progress_step=2)
 
         await bucket.acquire()
         cost["mood"] = await mood_stage(transcript.id, session_factory, llm_provider)
+
+        # Step 3: mood done, now tagging + extracting insights
+        await _set_progress(session_factory, call_id, 3)
 
         await bucket.acquire()
         cost["tags"] = await tag_stage(
@@ -168,6 +208,9 @@ async def _run_pipeline(
             call_id, transcript.id, session_factory, llm_provider
         )
 
+        # Step 4: insights done, running final synthesis
+        await _set_progress(session_factory, call_id, 4)
+
         await bucket.acquire()
         analysis, synthesis_cost = await synthesis_stage(
             call_id, transcript.id, session_factory, llm_provider
@@ -176,7 +219,7 @@ async def _run_pipeline(
 
         await update_analysis_cost(analysis.id, cost, session_factory, redis_client)
 
-        await _set_status(session_factory, call_id, "done")
+        await _set_status(session_factory, call_id, "done", progress_step=5)
 
         # Audio is no longer needed after analysis completes — the transcript
         # carries everything downstream features consume. Drop the file to free
