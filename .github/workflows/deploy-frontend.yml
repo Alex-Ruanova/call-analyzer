@@ -37,6 +37,15 @@ jobs:
           cache-from: type=registry,ref=${{ secrets.ACR_LOGIN_SERVER }}/altur-frontend:cache
           cache-to: type=registry,ref=${{ secrets.ACR_LOGIN_SERVER }}/altur-frontend:cache,mode=max
 
+      - name: Copy docker-compose.prod.yml to VM
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.VM_HOST }}
+          username: azureuser
+          key: ${{ secrets.VM_SSH_KEY }}
+          source: docker-compose.prod.yml
+          target: /app/
+
       - name: Deploy to VM
         uses: appleboy/ssh-action@v1
         with:
