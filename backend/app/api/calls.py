@@ -18,6 +18,7 @@ from app.api.middleware import check_budget
 from app.core.config import settings
 from app.core.db import get_session
 from app.core.errors import DomainError
+from app.core.storage import get_audio_storage
 from app.llm.schemas.synthesis import sentiment_to_score
 from app.models.analysis import Analysis
 from app.models.call import Call
@@ -27,7 +28,6 @@ from app.models.tag import CallTag, Tag
 from app.models.transcript import Transcript, TranscriptSegment
 from app.services.pipeline import _compute_talk_ratios
 from app.schemas.call import (
-    ActionItemOut,
     AnalysisOut,
     CallDetail,
     CallStatusOut,
@@ -36,6 +36,7 @@ from app.schemas.call import (
     InsightOut,
     ParticipantOut,
     ParticipantsRequest,
+    SegmentUpdate,
     TagOverrideRequest,
     TranscriptSegmentOut,
 )
@@ -78,7 +79,6 @@ async def _load_call_detail(call_id: int, session: AsyncSession) -> Call | None:
         .options(
             selectinload(Call.call_tags).selectinload(CallTag.tag),
             selectinload(Call.insights),
-            selectinload(Call.action_items),
             selectinload(Call.analysis),
             selectinload(Call.participants),
             selectinload(Call.transcript).selectinload(Transcript.segments),
@@ -108,7 +108,6 @@ def _call_to_detail(call: Call, client_name: str | None = None) -> CallDetail:
         ]
 
     insights = [InsightOut.model_validate(i) for i in call.insights]
-    action_items = [ActionItemOut.model_validate(a) for a in call.action_items]
 
     analysis = None
     if call.analysis:
@@ -142,7 +141,6 @@ def _call_to_detail(call: Call, client_name: str | None = None) -> CallDetail:
         tags=tags,
         segments=segments,
         insights=insights,
-        action_items=action_items,
         analysis=analysis,
         error_message=call.error_message,
         sentiment_score=sentiment_to_score(overall_sentiment),
@@ -168,7 +166,9 @@ async def bulk_delete_calls(
     # data (Analysis, Transcript) stays so the dashboard can keep counting
     # historical cost — cost paid to OpenAI cannot be "refunded" by removing
     # a call from the user's list.
-    now = datetime.now(UTC)
+    # Call.deleted_at is `TIMESTAMP WITHOUT TIME ZONE`; asyncpg rejects mixing
+    # tz-aware values with naive columns, so strip the offset.
+    now = datetime.now(UTC).replace(tzinfo=None)
     update_result = await session.execute(
         update(Call)
         .where(Call.id.in_(ids), Call.deleted_at.is_(None))
@@ -213,8 +213,8 @@ async def upload_call(
         )
 
     dest_filename = f"{uuid4()}{ext}"
-    dest_path = Path(settings.AUDIO_STORAGE_DIR) / dest_filename
-    Path(settings.AUDIO_STORAGE_DIR).mkdir(parents=True, exist_ok=True)
+    storage = get_audio_storage()
+    dest_path = storage.staging_path(dest_filename)
 
     total = 0
     hasher = hashlib.sha256()
@@ -269,6 +269,9 @@ async def upload_call(
                 message="Client not found",
                 status_code=404,
             )
+
+    storage = get_audio_storage()
+    await storage.save(dest_filename, dest_path)
 
     call = Call(
         client_id=client_id,
@@ -557,6 +560,56 @@ async def override_call_tags(
     return _call_to_detail(call, client_name=client_name)
 
 
+@router.patch(
+    "/calls/{call_id}/segments/{idx}",
+    summary="Edit a transcript segment (speaker reassignment, text correction)",
+    response_model=TranscriptSegmentOut,
+    responses={404: {"description": "Call or segment not found"}},
+)
+async def update_segment(
+    call_id: int,
+    idx: int,
+    body: SegmentUpdate,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> TranscriptSegmentOut:
+    transcript_row = await session.execute(
+        select(Transcript).where(Transcript.call_id == call_id)
+    )
+    transcript = transcript_row.scalar_one_or_none()
+    if transcript is None:
+        raise DomainError(
+            code="transcript_not_found",
+            message=f"No transcript for call {call_id}",
+            status_code=404,
+        )
+
+    seg_row = await session.execute(
+        select(TranscriptSegment).where(
+            TranscriptSegment.transcript_id == transcript.id,
+            TranscriptSegment.idx == idx,
+        )
+    )
+    segment = seg_row.scalar_one_or_none()
+    if segment is None:
+        raise DomainError(
+            code="segment_not_found",
+            message=f"Segment {idx} not found in call {call_id}",
+            status_code=404,
+        )
+
+    updates = body.model_dump(exclude_unset=True)
+    if "speaker_label" in updates and updates["speaker_label"]:
+        segment.speaker_label = updates["speaker_label"].strip()
+    if "text" in updates and updates["text"] is not None:
+        segment.text = updates["text"].strip()
+    # Any user edit constitutes review — clear the flag.
+    if updates:
+        segment.needs_review = False
+    await session.commit()
+    await session.refresh(segment)
+    return TranscriptSegmentOut.model_validate(segment)
+
+
 @router.put(
     "/calls/{call_id}/participants",
     summary="Replace participants for a call",
@@ -647,12 +700,11 @@ async def delete_call(
     # counting cost and call volume. Audio file is normally already gone
     # (deleted at the end of processing); the explicit unlink below covers
     # calls deleted before they finished.
-    call.deleted_at = datetime.now(UTC)
+    call.deleted_at = datetime.now(UTC).replace(tzinfo=None)
     await session.commit()
 
     if call.filename:
-        storage = Path(settings.AUDIO_STORAGE_DIR)
-        (storage / call.filename).unlink(missing_ok=True)
+        await get_audio_storage().delete(call.filename)
 
 
 @router.get(
@@ -691,7 +743,6 @@ async def export_call(
             for t in detail.tags
         ],
         "insights": [i.model_dump(mode="json") for i in detail.insights],
-        "action_items": [a.model_dump(mode="json") for a in detail.action_items],
         "analysis": detail.analysis.model_dump(mode="json") if detail.analysis else None,
         "exported_at": datetime.now(UTC).isoformat(),
     }

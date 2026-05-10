@@ -1,0 +1,14 @@
+project  = "altur"
+location = "eastus"
+
+pg_admin_user     = "altur"
+pg_admin_password = ""  # openssl rand -hex 16
+
+openai_api_key = ""     # sk-...
+api_key        = ""     # openssl rand -hex 32
+
+daily_budget_usd            = 5
+rate_limit_uploads_per_hour = 10
+
+allowed_origins = "https://yourdomain.com"
+frontend_domain = "yourdomain.com"

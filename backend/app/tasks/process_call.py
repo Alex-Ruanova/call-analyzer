@@ -3,8 +3,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from pathlib import Path
-
 import redis.asyncio as aioredis
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
@@ -12,6 +10,7 @@ from sqlalchemy.pool import NullPool
 from app.celery_app import celery_app
 from app.core.config import settings
 from app.core.errors import DomainError
+from app.core.storage import get_audio_storage
 from app.models.call import Call
 from app.providers.dependencies import get_llm_provider, get_stt_provider
 from app.services.pipeline import (
@@ -107,10 +106,9 @@ async def _delete_audio_for_call(
         call = await session.get(Call, call_id)
         if call is None or not call.filename:
             return
-        audio_path = Path(settings.AUDIO_STORAGE_DIR) / call.filename
     try:
-        audio_path.unlink(missing_ok=True)
-    except OSError as exc:
+        await get_audio_storage().delete(call.filename)
+    except Exception as exc:
         logger.warning("Could not delete audio for call %s: %s", call_id, exc)
 
 

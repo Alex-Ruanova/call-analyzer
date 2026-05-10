@@ -13,6 +13,7 @@ from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.core.config import settings
+from app.core.storage import get_audio_storage
 from app.core.errors import DomainError
 from app.llm.prompts import insights as insights_prompts
 from app.llm.prompts import mood as mood_prompts
@@ -24,7 +25,7 @@ from app.llm.schemas.synthesis import SYNTHESIS_VERSION, Synthesis
 from app.llm.schemas.tags import TagSuggestion
 from app.models.analysis import Analysis
 from app.models.call import Call
-from app.models.insight import ActionItem, Insight
+from app.models.insight import Insight
 from app.models.participant import Participant
 from app.models.tag import Tag
 from app.models.transcript import Transcript, TranscriptSegment
@@ -108,27 +109,29 @@ async def transcribe_stage(
         if call is None:
             raise DomainError("call_not_found", f"Call {call_id} not found", 404)
 
-        audio_path = Path(settings.AUDIO_STORAGE_DIR) / call.filename
-        if not audio_path.exists():
-            raise DomainError(
-                "stt_file_not_found",
-                f"Audio file not found: {audio_path}",
-                404,
-            )
-
         total_cost = 0.0
         diarized: DiarizedTranscript
 
-        file_size = audio_path.stat().st_size
-        if file_size > 24 * 1024 * 1024:
-            diarized, chunk_cost = await _transcribe_chunked(
-                audio_path, call.language, stt_provider, llm_provider
-            )
-            total_cost += chunk_cost
-        else:
-            result = await stt_provider.transcribe(audio_path, call.language)
-            diarized = result.transcript
-            total_cost += result.usage.cost_usd
+        async with get_audio_storage().local_path(call.filename) as audio_path:
+            if not audio_path.exists():
+                raise DomainError(
+                    "stt_file_not_found",
+                    f"Audio file not found: {audio_path}",
+                    404,
+                )
+
+            file_size = audio_path.stat().st_size
+            if file_size > 24 * 1024 * 1024:
+                diarized, chunk_cost = await _transcribe_chunked(
+                    audio_path, call.language, stt_provider, llm_provider
+                )
+                total_cost += chunk_cost
+            else:
+                result = await stt_provider.transcribe(audio_path, call.language)
+                diarized = result.transcript
+                total_cost += result.usage.cost_usd
+
+        review_flags = _flag_minor_speakers(diarized.segments)
 
         transcript = Transcript(
             call_id=call_id,
@@ -146,6 +149,7 @@ async def transcribe_stage(
                 end_seconds=seg.end,
                 speaker_label=seg.speaker,
                 text=seg.text,
+                needs_review=review_flags[idx],
             )
             session.add(segment)
 
@@ -234,6 +238,53 @@ async def _transcribe_chunked(
         ),
         total_cost,
     )
+
+
+def _flag_minor_speakers(
+    segments: list[DiarizedSegment],
+    *,
+    min_seconds: float = 2.0,
+    min_share: float = 0.02,
+    min_segments: int = 2,
+) -> list[bool]:
+    """Return a parallel ``needs_review`` flag list for each input segment.
+
+    OpenAI's diarized transcription occasionally invents speakers for cross-talk,
+    breath, or transient noise. We do **not** silently merge those speakers —
+    that risks erasing a real third participant who only spoke briefly. Instead
+    we flag the segments belonging to suspect speakers so the user can
+    confirm/reassign them in the UI (see docs/technical-debt/20).
+
+    A speaker is suspect only when ALL of:
+      - total speaking time < ``min_seconds``,
+      - share of total duration < ``min_share``,
+      - segment count < ``min_segments``.
+
+    The AND is what keeps false positives low: a real participant with a tiny
+    voice and rare turns may match 1 or 2 conditions, all 3 simultaneously is
+    very unlikely in practice.
+    """
+    if not segments:
+        return []
+
+    durations: dict[str, float] = {}
+    counts: dict[str, int] = {}
+    for s in segments:
+        d = max(0.0, s.end - s.start)
+        durations[s.speaker] = durations.get(s.speaker, 0.0) + d
+        counts[s.speaker] = counts.get(s.speaker, 0) + 1
+
+    total = sum(durations.values()) or 1.0
+    suspect = {
+        sp
+        for sp, dur in durations.items()
+        if dur < min_seconds and dur / total < min_share and counts[sp] < min_segments
+    }
+    # If everyone qualifies, the heuristic is probably miscalibrated for this
+    # call (very short or single-segment transcript). Don't flag anything.
+    if not suspect or len(suspect) >= len(durations):
+        return [False] * len(segments)
+    return [s.speaker in suspect for s in segments]
 
 
 def _detect_silence(audio_path: Path) -> list[float]:
@@ -521,22 +572,6 @@ async def insight_stage(
                 weight=extracted.weight,
             )
             session.add(insight)
-
-        for item in extraction.action_items:
-            parsed_due_date = None
-            if item.due_date:
-                try:
-                    parsed_due_date = date.fromisoformat(item.due_date)
-                except (ValueError, TypeError):
-                    parsed_due_date = None
-
-            action_item = ActionItem(
-                call_id=call_id,
-                text=item.text,
-                owner=item.owner,
-                due_date=parsed_due_date,
-            )
-            session.add(action_item)
 
         await session.commit()
         return cost

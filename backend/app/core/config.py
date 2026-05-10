@@ -8,13 +8,17 @@ class Settings(BaseSettings):
     DATABASE_URL: str
     REDIS_URL: str
     OPENAI_API_KEY: str
-    AUDIO_STORAGE_DIR: str = "./storage/audio"
+    AUDIO_STORAGE_DIR: str = "/tmp/audio"
 
     LLM_MODEL_TAGGING: str = "gpt-4o-mini"
     LLM_MODEL_MOOD: str = "gpt-4o-mini"
     LLM_MODEL_INSIGHTS: str = "gpt-4o-mini"
     LLM_MODEL_SYNTHESIS: str = "gpt-4.1-mini"
     STT_MODEL: str = "gpt-4o-transcribe-diarize"
+
+    AZURE_STORAGE_ACCOUNT: str = ""
+    AZURE_STORAGE_KEY: str = ""
+    AZURE_STORAGE_CONTAINER: str = "audio"
 
     AUTH_ENABLED: bool = False
     API_KEY: str = ""

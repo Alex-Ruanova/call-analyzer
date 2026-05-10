@@ -31,7 +31,7 @@ services:
       - "8000:8000"
     env_file: .env
     volumes:
-      - ./storage/audio:/app/storage/audio
+      - audio_tmp:/tmp/audio
     depends_on:
       db:
         condition: service_healthy
@@ -50,7 +50,7 @@ services:
       dockerfile: docker/worker.Dockerfile
     env_file: .env
     volumes:
-      - ./storage/audio:/app/storage/audio
+      - audio_tmp:/tmp/audio
     depends_on:
       db:
         condition: service_healthy
@@ -72,3 +72,4 @@ services:
 
 volumes:
   postgres_data:
+  audio_tmp:
