@@ -214,11 +214,12 @@ export function Topbar({ crumbs, actions, onToggleSidebar }: TopbarProps) {
 
 // ---- Emotion bits ----
 
+// Keys must match the LLM mood taxonomy (backend/app/llm/schemas/mood.py).
 const EMOTIONS: EmotionsMap = {
   positive: { label: "Positive", color: "#10b981", dot: "#10b981" },
-  excited: { label: "Excited", color: "#22d3ee", dot: "#22d3ee" },
+  enthusiastic: { label: "Enthusiastic", color: "#22d3ee", dot: "#22d3ee" },
   neutral: { label: "Neutral", color: "#6b7280", dot: "#9ca3af" },
-  hesitant: { label: "Hesitant", color: "#f59e0b", dot: "#f59e0b" },
+  concerned: { label: "Concerned", color: "#f59e0b", dot: "#f59e0b" },
   confused: { label: "Confused", color: "#a78bfa", dot: "#a78bfa" },
   frustrated: { label: "Frustrated", color: "#f43f5e", dot: "#f43f5e" },
   negative: { label: "Negative", color: "#ef4444", dot: "#ef4444" },

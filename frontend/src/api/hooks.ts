@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import type {
   CallSummary, CallDetail, CallStatusResponse, Client, ClientDetail,
-  Tag, DashboardOut, EmotionsMap, CallFilters,
+  Tag, DashboardOut, EmotionsMap, CallFilters, Note,
 } from "../types";
 import { apiFetch, apiUpload } from "./client";
 import {
@@ -11,6 +11,7 @@ import {
   mapClient,
   mapClientDetail,
   mapDashboard,
+  mapNote,
   mapTag,
   mapEmotions,
 } from "./mappers";
@@ -20,6 +21,7 @@ import type {
   BackendCallStatus,
   BackendClientOut,
   BackendClientDetail,
+  BackendNoteOut,
   BackendTagOut,
   BackendEmotion,
   BackendDashboardOut,
@@ -137,12 +139,28 @@ export function useCreateCall() {
 export function useCreateClient() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (data: { name: string; industry?: string }) =>
+    mutationFn: (data: { name: string; industry?: string | null; owner?: string | null }) =>
       apiFetch<{ id: number }>("/api/clients", {
         method: "POST",
         body: JSON.stringify(data),
       }).then((r) => ({ id: String(r.id) })),
     onSuccess: () => { void qc.invalidateQueries({ queryKey: ["clients"] }); },
+  });
+}
+
+export function useUpdateClient() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (args: { clientId: string; patch: { industry?: string | null; owner?: string | null } }) =>
+      apiFetch("/api/clients/" + args.clientId, {
+        method: "PATCH",
+        body: JSON.stringify(args.patch),
+      }),
+    onSuccess: (_data, vars) => {
+      void qc.invalidateQueries({ queryKey: ["clients"] });
+      void qc.invalidateQueries({ queryKey: ["client", vars.clientId] });
+      void qc.invalidateQueries({ queryKey: ["calls"] });
+    },
   });
 }
 
@@ -198,12 +216,80 @@ export function useUpdateParticipants() {
   });
 }
 
+export function useUpdateSegment() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (args: {
+      callId: string;
+      idx: number;
+      patch: { speaker_label?: string; text?: string };
+    }) =>
+      apiFetch(`/api/calls/${args.callId}/segments/${args.idx}`, {
+        method: "PATCH",
+        body: JSON.stringify(args.patch),
+      }),
+    onSuccess: (_data, vars) => {
+      void qc.invalidateQueries({ queryKey: ["call", vars.callId] });
+    },
+  });
+}
+
 export function useDeleteCall() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: string) =>
       apiFetch("/api/calls/" + id, { method: "DELETE" }),
     onSuccess: () => { void qc.invalidateQueries({ queryKey: ["calls"] }); },
+  });
+}
+
+// ---- Notes ----
+
+export function useCallNotes(callId: string) {
+  return useQuery({
+    queryKey: ["notes", callId],
+    queryFn: (): Promise<Note[]> =>
+      apiFetch<BackendNoteOut[]>(`/api/calls/${callId}/notes`).then((r) => r.map(mapNote)),
+    enabled: !!callId,
+  });
+}
+
+export function useCreateNote() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (args: { callId: string; text: string }) =>
+      apiFetch<BackendNoteOut>(`/api/calls/${args.callId}/notes`, {
+        method: "POST",
+        body: JSON.stringify({ text: args.text }),
+      }).then(mapNote),
+    onSuccess: (_data, vars) => {
+      void qc.invalidateQueries({ queryKey: ["notes", vars.callId] });
+    },
+  });
+}
+
+export function useUpdateNote() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (args: { callId: string; noteId: string; text: string }) =>
+      apiFetch<BackendNoteOut>(`/api/notes/${args.noteId}`, {
+        method: "PATCH",
+        body: JSON.stringify({ text: args.text }),
+      }).then(mapNote),
+    onSuccess: (_data, vars) => {
+      void qc.invalidateQueries({ queryKey: ["notes", vars.callId] });
+    },
+  });
+}
+
+export function useDeleteNote() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (args: { callId: string; noteId: string }) =>
+      apiFetch(`/api/notes/${args.noteId}`, { method: "DELETE" }),
+    onSuccess: (_data, vars) => {
+      void qc.invalidateQueries({ queryKey: ["notes", vars.callId] });
+    },
   });
 }
 

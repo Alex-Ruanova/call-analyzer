@@ -1,9 +1,24 @@
+import { useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { useClient } from "../api/hooks";
+import { useClient, useUpdateClient } from "../api/hooks";
 import { useSetCrumbOverride } from "../App";
 import { Icons, SentimentBar } from "../components/components";
+import { useToast } from "../components/Toast";
 import { formatDuration } from "../lib/format";
 import type { CallSummary } from "../types";
+
+function formatLastCall(value: string | null): string {
+  if (!value) return "—";
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return "—";
+  const now = new Date();
+  const diffDays = Math.floor((now.getTime() - d.getTime()) / (1000 * 60 * 60 * 24));
+  if (diffDays === 0) return "Today";
+  if (diffDays === 1) return "Yesterday";
+  if (diffDays > 1 && diffDays < 7) return `${diffDays} days ago`;
+  if (diffDays >= 7 && diffDays < 30) return `${Math.floor(diffDays / 7)}w ago`;
+  return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+}
 
 interface ClientDetailScreenProps {
   pinnedClients: string[];
@@ -52,14 +67,8 @@ export default function ClientDetailScreen({ pinnedClients, onTogglePin }: Clien
           <h1 style={{ fontSize: 22, fontWeight: 600, margin: 0, letterSpacing: "-0.02em" }}>{c.name}</h1>
           <div style={{ display: "flex", gap: 12, alignItems: "center", marginTop: 6, flexWrap: "wrap", fontSize: 12.5, color: "var(--text-3)" }}>
             <span>{c.industry ?? "—"}</span>
-            {c.owner && (
-              <>
-                <span style={{ color: "var(--text-4)" }}>·</span>
-                <span>
-                  Owner: <span style={{ color: "var(--text-2)" }}>{c.owner}</span>
-                </span>
-              </>
-            )}
+            <span style={{ color: "var(--text-4)" }}>·</span>
+            <OwnerEditor clientId={c.id} owner={c.owner} />
             {c.arr != null && c.arr > 0 && (
               <>
                 <span style={{ color: "var(--text-4)" }}>·</span>
@@ -89,7 +98,7 @@ export default function ClientDetailScreen({ pinnedClients, onTogglePin }: Clien
       {/* Stats */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 14 }}>
         <StatCard label="Calls" value={c.calls} />
-        <StatCard label="Last call" value={c.last_call ?? "—"} />
+        <StatCard label="Last call" value={formatLastCall(c.last_call)} />
         <StatCard label="Avg sentiment" valueEl={<SentimentBar value={avgSentiment} width={70} />} />
       </div>
 
@@ -164,6 +173,86 @@ export default function ClientDetailScreen({ pinnedClients, onTogglePin }: Clien
         )}
       </div>
     </div>
+  );
+}
+
+function OwnerEditor({ clientId, owner }: { clientId: string; owner: string | null }) {
+  const updateClient = useUpdateClient();
+  const toast = useToast();
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(owner ?? "");
+
+  const startEdit = () => {
+    setDraft(owner ?? "");
+    setEditing(true);
+  };
+
+  const commit = (next: string | null) => {
+    const normalized = next === null ? null : next.trim() || null;
+    if (normalized === (owner ?? null)) {
+      setEditing(false);
+      return;
+    }
+    updateClient.mutate(
+      { clientId, patch: { owner: normalized } },
+      {
+        onSuccess: () => setEditing(false),
+        onError: (err) => {
+          toast.show(err instanceof Error ? err.message : "Failed to update owner", "error");
+        },
+      }
+    );
+  };
+
+  if (editing) {
+    return (
+      <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+        <span>Owner:</span>
+        <input
+          autoFocus
+          className="input"
+          placeholder="e.g. Maya Chen"
+          value={draft}
+          disabled={updateClient.isPending}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") commit(draft);
+            else if (e.key === "Escape") setEditing(false);
+          }}
+          onBlur={() => commit(draft)}
+          style={{ height: 24, fontSize: 12, padding: "0 8px", width: 160 }}
+        />
+      </span>
+    );
+  }
+
+  return (
+    <span
+      style={{ display: "inline-flex", alignItems: "center", gap: 6, cursor: "pointer" }}
+      onClick={startEdit}
+      title="Click to edit owner"
+    >
+      <span>Owner:</span>
+      {owner ? (
+        <>
+          <span style={{ color: "var(--text-2)" }}>{owner}</span>
+          <button
+            className="btn btn--ghost btn--sm"
+            onClick={(e) => {
+              e.stopPropagation();
+              commit(null);
+            }}
+            disabled={updateClient.isPending}
+            title="Remove owner"
+            style={{ height: 20, padding: "0 6px", fontSize: 11 }}
+          >
+            <Icons.X size={11} />
+          </button>
+        </>
+      ) : (
+        <span style={{ color: "var(--text-4)", fontStyle: "italic" }}>add</span>
+      )}
+    </span>
   );
 }
 

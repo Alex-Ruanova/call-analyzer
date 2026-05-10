@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { useClients } from "../api/hooks";
+import { useClients, useCreateClient } from "../api/hooks";
 import { Icons, SentimentBar } from "../components/components";
+import { useToast } from "../components/Toast";
 import type { Client } from "../types";
 
 interface NewClientState {
@@ -33,33 +34,36 @@ interface ClientsScreenProps {
 export default function ClientsScreen({ pinnedClients, onTogglePin }: ClientsScreenProps) {
   const navigate = useNavigate();
   const { data: clientsData } = useClients();
+  const createClient = useCreateClient();
+  const toast = useToast();
   const [search, setSearch] = useState("");
   const [showNew, setShowNew] = useState(false);
   const [newClient, setNewClient] = useState<NewClientState>({ name: "", industry: "", owner: "" });
-  const [extraClients, setExtraClients] = useState<Client[]>([]);
 
-  const allClients = [...(clientsData ?? []), ...extraClients];
+  const allClients = clientsData ?? [];
   const filtered = allClients.filter(
     (c) => !search || c.name.toLowerCase().includes(search.toLowerCase())
   );
 
   const handleCreate = () => {
-    if (!newClient.name.trim()) return;
-    const created: Client = {
-      id: `c-new-${Date.now()}`,
-      name: newClient.name.trim(),
-      industry: newClient.industry.trim() || null,
-      owner: newClient.owner.trim() || null,
-      calls: 0,
-      last_call: null,
-      sentiment: null,
-      sentiment_score: null,
-      health: "on-track",
-      arr: null,
-    };
-    setExtraClients((prev) => [created, ...prev]);
-    setShowNew(false);
-    setNewClient({ name: "", industry: "", owner: "" });
+    const name = newClient.name.trim();
+    if (!name || createClient.isPending) return;
+    createClient.mutate(
+      {
+        name,
+        industry: newClient.industry.trim() || null,
+        owner: newClient.owner.trim() || null,
+      },
+      {
+        onSuccess: () => {
+          setShowNew(false);
+          setNewClient({ name: "", industry: "", owner: "" });
+        },
+        onError: (err) => {
+          toast.show(err instanceof Error ? err.message : "Failed to create client", "error");
+        },
+      }
+    );
   };
 
   return (
@@ -105,10 +109,12 @@ export default function ClientsScreen({ pinnedClients, onTogglePin }: ClientsScr
           value={newClient}
           onChange={setNewClient}
           onCancel={() => {
+            if (createClient.isPending) return;
             setShowNew(false);
             setNewClient({ name: "", industry: "", owner: "" });
           }}
           onCreate={handleCreate}
+          pending={createClient.isPending}
         />
       )}
     </div>
@@ -168,6 +174,11 @@ function ClientCard({ client: c, isPinned, onTogglePin, onOpen, onUpload }: Clie
             {c.name}
           </div>
           <div style={{ fontSize: 11.5, color: "var(--text-3)" }}>{c.industry ?? "—"}</div>
+          {c.owner && (
+            <div style={{ fontSize: 11, color: "var(--text-4)", marginTop: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+              Owner · <span style={{ color: "var(--text-3)" }}>{c.owner}</span>
+            </div>
+          )}
         </div>
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, fontSize: 12, marginBottom: 12 }}>
@@ -226,9 +237,10 @@ interface NewClientModalProps {
   onChange: (v: NewClientState) => void;
   onCancel: () => void;
   onCreate: () => void;
+  pending?: boolean;
 }
 
-export function NewClientModal({ value, onChange, onCancel, onCreate }: NewClientModalProps) {
+export function NewClientModal({ value, onChange, onCancel, onCreate, pending = false }: NewClientModalProps) {
   const set = (k: keyof NewClientState, v: string) => onChange({ ...value, [k]: v });
   return (
     <div
@@ -278,11 +290,11 @@ export function NewClientModal({ value, onChange, onCancel, onCreate }: NewClien
           </button>
           <button
             className="btn btn--primary"
-            disabled={!value.name.trim()}
-            style={!value.name.trim() ? { opacity: 0.45, pointerEvents: "none" } : undefined}
+            disabled={!value.name.trim() || pending}
+            style={!value.name.trim() || pending ? { opacity: 0.45, pointerEvents: "none" } : undefined}
             onClick={onCreate}
           >
-            Create client
+            {pending ? "Creating…" : "Create client"}
           </button>
         </div>
       </div>

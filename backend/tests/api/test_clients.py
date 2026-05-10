@@ -51,6 +51,32 @@ async def test_get_client_detail(client: AsyncClient) -> None:
 
 
 @pytest.mark.anyio
+async def test_create_then_update_owner(client: AsyncClient) -> None:
+    create_resp = await client.post(
+        "/api/clients", json={"name": "Owner Corp", "owner": "Maya Chen"}
+    )
+    assert create_resp.status_code == 201
+    assert create_resp.json()["owner"] == "Maya Chen"
+    client_id = create_resp.json()["id"]
+
+    # Change
+    patch1 = await client.patch(f"/api/clients/{client_id}", json={"owner": "Lee Park"})
+    assert patch1.status_code == 200
+    assert patch1.json()["owner"] == "Lee Park"
+
+    # Clear (explicit null)
+    patch2 = await client.patch(f"/api/clients/{client_id}", json={"owner": None})
+    assert patch2.status_code == 200
+    assert patch2.json()["owner"] is None
+
+    # Industry untouched when only owner is sent
+    patch3 = await client.patch(f"/api/clients/{client_id}", json={"industry": "Retail"})
+    assert patch3.status_code == 200
+    assert patch3.json()["industry"] == "Retail"
+    assert patch3.json()["owner"] is None
+
+
+@pytest.mark.anyio
 async def test_get_client_not_found(client: AsyncClient) -> None:
     resp = await client.get("/api/clients/99999")
     assert resp.status_code == 404

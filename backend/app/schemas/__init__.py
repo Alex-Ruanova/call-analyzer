@@ -1,5 +1,4 @@
 from app.schemas.call import (
-    ActionItemOut,
     AnalysisOut,
     CallCreate,
     CallDetail,
@@ -23,7 +22,6 @@ from app.schemas.dashboard import (
 from app.schemas.tag import TagOut
 
 __all__ = [
-    "ActionItemOut",
     "AnalysisOut",
     "CallCreate",
     "CallDetail",

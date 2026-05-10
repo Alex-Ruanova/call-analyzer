@@ -34,7 +34,7 @@ def _jsonb_sqlite(type_: Any, compiler: Any, **kw: Any) -> str:
 
 from app.core.db import Base  # noqa: E402
 from app.core.errors import DomainError  # noqa: E402
-from app.llm.schemas.insights import ExtractedActionItem, ExtractedInsight, InsightExtraction  # noqa: E402
+from app.llm.schemas.insights import ExtractedInsight, InsightExtraction  # noqa: E402
 from app.llm.schemas.mood import MoodLabels, SegmentMood  # noqa: E402
 from app.llm.schemas.synthesis import Synthesis  # noqa: E402
 from app.llm.schemas.tags import TagSuggestion  # noqa: E402
@@ -121,9 +121,6 @@ class FakeLLMProvider:
                         segment_idx=1,
                         weight=1.5,
                     )
-                ],
-                action_items=[
-                    ExtractedActionItem(text="Send proposal", owner="rep", due_date=None)
                 ],
             )
         elif schema is Synthesis:
@@ -432,3 +429,43 @@ async def test_llm_failure_sets_failed_status(db_session_factory, call_row, tmp_
         )
         analysis = analysis_result.scalar_one_or_none()
         assert analysis is None, "Analysis row must not exist after LLM failure"
+
+
+def test_flag_minor_speakers_marks_phantom_only() -> None:
+    from app.services.pipeline import _flag_minor_speakers
+
+    # Two real speakers (A, B) interleaving for ~30s, plus a phantom (C) with
+    # one tiny segment that should be flagged but its speaker preserved.
+    segments = [
+        DiarizedSegment(speaker="A", start=0.0, end=10.0, text="hello"),
+        DiarizedSegment(speaker="B", start=10.0, end=20.0, text="hi back"),
+        DiarizedSegment(speaker="C", start=20.0, end=20.5, text="..."),
+        DiarizedSegment(speaker="B", start=20.5, end=30.0, text="continuing"),
+    ]
+    flags = _flag_minor_speakers(segments)
+    assert flags == [False, False, True, False]
+
+
+def test_flag_minor_speakers_keeps_balanced_speakers() -> None:
+    from app.services.pipeline import _flag_minor_speakers
+
+    segments = [
+        DiarizedSegment(speaker="A", start=0.0, end=15.0, text="block 1"),
+        DiarizedSegment(speaker="B", start=15.0, end=30.0, text="block 2"),
+    ]
+    assert _flag_minor_speakers(segments) == [False, False]
+
+
+def test_flag_minor_speakers_empty() -> None:
+    from app.services.pipeline import _flag_minor_speakers
+
+    assert _flag_minor_speakers([]) == []
+
+
+def test_flag_minor_speakers_skips_when_everyone_qualifies() -> None:
+    from app.services.pipeline import _flag_minor_speakers
+
+    # Single tiny segment — heuristic should bail out instead of flagging
+    # the only participant.
+    segments = [DiarizedSegment(speaker="A", start=0.0, end=1.0, text="hi")]
+    assert _flag_minor_speakers(segments) == [False]

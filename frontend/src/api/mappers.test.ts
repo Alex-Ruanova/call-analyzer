@@ -84,7 +84,6 @@ const baseDetail: BackendCallDetail = {
     { id: 12, kind: "buying-signal", text: "Signal C", segment_idx: null, weight: 0.7 },
     { id: 13, kind: "next-step", text: "Step D", segment_idx: 2, weight: 1.0 },
   ],
-  action_items: [],
   analysis: null,
   error_message: null,
   sentiment_score: null,

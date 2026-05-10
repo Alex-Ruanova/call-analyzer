@@ -2,7 +2,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-INSIGHTS_VERSION = "v1"
+INSIGHTS_VERSION = "v2"
 
 InsightKind = Literal[
     "pain-point",
@@ -29,18 +29,7 @@ class ExtractedInsight(BaseModel):
     weight: float = Field(description="Importance 0.0–2.0")
 
 
-class ExtractedActionItem(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    text: str
-    owner: str | None = Field(description="Person responsible, or null if unclear")
-    due_date: str | None = Field(
-        description="ISO date string (YYYY-MM-DD) if mentioned, else null"
-    )
-
-
 class InsightExtraction(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     insights: list[ExtractedInsight]
-    action_items: list[ExtractedActionItem]

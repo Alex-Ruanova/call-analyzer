@@ -14,6 +14,7 @@ import type {
   EmotionsMap,
   Insight,
   InsightKind,
+  Note,
   Participant,
   TranscriptSegment,
   CallStatus,
@@ -37,6 +38,7 @@ export interface BackendTranscriptSegment {
   speaker_role: string | null;
   text: string;
   mood: string | null;
+  needs_review?: boolean;
 }
 
 export interface BackendInsightOut {
@@ -47,12 +49,12 @@ export interface BackendInsightOut {
   weight: number;
 }
 
-export interface BackendActionItemOut {
+export interface BackendNoteOut {
   id: number;
+  call_id: number;
   text: string;
-  owner: string | null;
-  due_date: string | null;
-  done: boolean;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface BackendAnalysisOut {
@@ -95,7 +97,6 @@ export interface BackendCallDetail {
   tags: BackendTagOut[];
   segments: BackendTranscriptSegment[];
   insights: BackendInsightOut[];
-  action_items: BackendActionItemOut[];
   analysis: BackendAnalysisOut | null;
   error_message: string | null;
   sentiment_score: number | null;
@@ -240,6 +241,7 @@ export function mapCallDetail(raw: BackendCallDetail): CallDetail {
     speaker_role: seg.speaker_role,
     text: seg.text,
     mood: seg.mood,
+    needs_review: seg.needs_review ?? false,
   }));
 
   // Derive participants from unique speaker labels, then overlay any saved
@@ -336,13 +338,6 @@ export function mapCallDetail(raw: BackendCallDetail): CallDetail {
     language: raw.language,
     segments,
     insights,
-    action_items: raw.action_items.map((a) => ({
-      id: String(a.id),
-      text: a.text,
-      owner: a.owner,
-      due_date: a.due_date,
-      done: a.done,
-    })),
     analysis,
     participants,
     pain_points,
@@ -469,6 +464,15 @@ export function mapDashboard(
     top_pain_points: raw.top_pain_points,
     top_performers: [],
     recent_calls: recentCalls,
+  };
+}
+
+export function mapNote(raw: BackendNoteOut): Note {
+  return {
+    id: String(raw.id),
+    text: raw.text,
+    created_at: raw.created_at,
+    updated_at: raw.updated_at,
   };
 }
 

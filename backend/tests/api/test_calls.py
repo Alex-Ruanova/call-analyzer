@@ -97,7 +97,6 @@ async def test_get_call_detail(client: AsyncClient) -> None:
     assert "tags" in data
     assert "segments" in data
     assert "insights" in data
-    assert "action_items" in data
 
 
 @pytest.mark.anyio
@@ -229,7 +228,7 @@ async def test_json_export_full_shape(client: AsyncClient) -> None:
     data = resp.json()
 
     # All top-level keys must be present
-    assert set(data.keys()) >= {"call", "transcript", "tags", "insights", "action_items", "analysis", "exported_at"}
+    assert set(data.keys()) >= {"call", "transcript", "tags", "insights", "analysis", "exported_at"}
 
     # call sub-object must have id and title
     assert data["call"]["id"] == call_id
@@ -242,7 +241,6 @@ async def test_json_export_full_shape(client: AsyncClient) -> None:
     # tags and insights must be lists
     assert isinstance(data["tags"], list)
     assert isinstance(data["insights"], list)
-    assert isinstance(data["action_items"], list)
 
     # exported_at must be an ISO 8601 string
     assert isinstance(data["exported_at"], str)

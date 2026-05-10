@@ -16,6 +16,12 @@ Esta carpeta documenta deuda técnica conocida del proyecto: bugs corregidos con
 - [11 — Tag taxonomy ahora viene de la BD (resuelto)](./11-tag-taxonomy-from-db.md)
 - [13 — Talk:listen ratio respeta Participant.side (resuelto)](./13-talk-ratio-uses-participants-side.md)
 - [14 — Soft delete de calls + audio cleanup (resuelto, incluye migración)](./14-soft-delete-and-audio-cleanup.md)
+- [15 — Action Items: feature removida (pendiente)](./15-action-items-removed.md)
+- [16 — Notes: no se persisten, seed hardcodeado (pendiente)](./16-notes-not-persisted.md)
+- [17 — Emotion distribution muestra "Neutral" duplicado (pendiente)](./17-emotion-mood-mapping-incomplete.md)
+- [18 — Transcript: el dot de emoción por turno no es identificable (pendiente)](./18-transcript-emotion-not-labeled.md)
+- [19 — Overall sentiment vs distribución de moods, copy engañoso (pendiente)](./19-overall-sentiment-vs-mood-distribution.md)
+- [20 — Phantom speakers: cola de revisión humana (resuelto, incluye migración)](./20-phantom-speakers-review-queue.md)
 
 ## Convenciones
 

@@ -1,4 +1,4 @@
-from datetime import date, datetime
+from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict
 
@@ -44,6 +44,12 @@ class TranscriptSegmentOut(BaseModel):
     speaker_role: str | None
     text: str
     mood: str | None
+    needs_review: bool = False
+
+
+class SegmentUpdate(BaseModel):
+    speaker_label: str | None = None
+    text: str | None = None
 
 
 class InsightOut(BaseModel):
@@ -54,16 +60,6 @@ class InsightOut(BaseModel):
     text: str
     segment_idx: int | None
     weight: float
-
-
-class ActionItemOut(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
-    id: int
-    text: str
-    owner: str | None
-    due_date: date | None
-    done: bool
 
 
 class AnalysisOut(BaseModel):
@@ -112,7 +108,6 @@ class CallDetail(BaseModel):
     tags: list[TagOut]
     segments: list[TranscriptSegmentOut]
     insights: list[InsightOut]
-    action_items: list[ActionItemOut]
     analysis: AnalysisOut | None
     error_message: str | None
     sentiment_score: float | None = None

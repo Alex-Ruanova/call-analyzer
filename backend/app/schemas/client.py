@@ -11,6 +11,11 @@ class ClientCreate(BaseModel):
     owner: str | None = None
 
 
+class ClientUpdate(BaseModel):
+    industry: str | None = None
+    owner: str | None = None
+
+
 class ClientOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

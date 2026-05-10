@@ -1,6 +1,5 @@
 from app.llm.schemas.insights import (
     INSIGHTS_VERSION,
-    ExtractedActionItem,
     ExtractedInsight,
     InsightExtraction,
     InsightKind,
@@ -14,7 +13,6 @@ __all__ = [
     "MOOD_VERSION",
     "SYNTHESIS_VERSION",
     "TAGS_VERSION",
-    "ExtractedActionItem",
     "ExtractedInsight",
     "InsightExtraction",
     "InsightKind",

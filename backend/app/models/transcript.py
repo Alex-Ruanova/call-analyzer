@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Float, ForeignKey, Index, Integer, String, Text, func
+from sqlalchemy import Boolean, Float, ForeignKey, Index, Integer, String, Text, func
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -46,6 +46,12 @@ class TranscriptSegment(Base):
     speaker_role: Mapped[str | None] = mapped_column(String(50))
     text: Mapped[str] = mapped_column(Text, nullable=False)
     mood: Mapped[str | None] = mapped_column(String(50))
+    # True when the diarizer probably hallucinated this speaker (very short,
+    # very few segments). Surfaced in the UI as a review queue so the user
+    # can reassign or confirm. Cleared once the user edits.
+    needs_review: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
 
     transcript: Mapped[Transcript] = relationship(back_populates="segments")
 

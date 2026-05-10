@@ -1,11 +1,12 @@
 import { useState, useRef, useEffect } from "react";
 import { useParams } from "react-router-dom";
-import { useCall, useCallStatus, useTags, useClients, useUpdateParticipants } from "../api/hooks";
+import { useCall, useCallStatus, useTags, useClients, useUpdateParticipants, useCallNotes, useCreateNote, useUpdateNote, useDeleteNote, useUpdateSegment } from "../api/hooks";
 import { useQueryClient } from "@tanstack/react-query";
 import { useSetCrumbOverride } from "../App";
-import { Icons, EmotionDot, TagEditor, ClientPicker, getEmotion } from "../components/components";
+import { Icons, TagEditor, ClientPicker, getEmotion } from "../components/components";
+import { useToast } from "../components/Toast";
 import { formatDuration, formatTimestamp } from "../lib/format";
-import type { ActionItem, Participant, Tag, CallStatus } from "../types";
+import type { Participant, Tag, CallStatus, Note } from "../types";
 
 interface DetailScreenProps {
   moodViz?: "ribbon" | "off";
@@ -136,11 +137,11 @@ export default function DetailScreen({ moodViz = "ribbon" }: DetailScreenProps) 
   useSetCrumbOverride(call?.title ?? null);
   const { data: allTagsData } = useTags();
   const { data: clientsData } = useClients();
+  const { data: notesData } = useCallNotes(id);
 
   const [title, setTitle] = useState<string | null>(null);
   const [tags, setTags] = useState<Tag[] | null>(null);
   const [clientName, setClientName] = useState<string | null | undefined>(undefined);
-  const [actions, setActions] = useState<ActionItem[] | null>(null);
   const [participants, setParticipants] = useState<Participant[] | null>(null);
   const updateParticipantsMutation = useUpdateParticipants();
 
@@ -161,10 +162,6 @@ export default function DetailScreen({ moodViz = "ribbon" }: DetailScreenProps) 
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [participants, id]);
-  const [notes, setNotes] = useState<Array<{ when: string; text: string }>>([
-    { when: "Yesterday, 4:12 pm", text: "Nice handle on the Spanish objection. Worth turning into an enablement clip." },
-    { when: "Yesterday, 3:48 pm", text: "Daniel's \"managers spend 4 hours\" line is gold for the case study." },
-  ]);
   const [newNote, setNewNote] = useState("");
   const [tab, setTab] = useState<"summary" | "insights" | "emotions" | "notes">("summary");
   const [search, setSearch] = useState("");
@@ -197,7 +194,6 @@ export default function DetailScreen({ moodViz = "ribbon" }: DetailScreenProps) 
   const currentClientOwner = currentClient
     ? (allClients.find((c) => c.name === currentClient)?.owner ?? null)
     : null;
-  const currentActions = actions ?? call.action_items;
   const currentParticipants = participants ?? call.participants;
 
   const jumpTo = (idx: number, opts: { tab?: typeof tab } = {}) => {
@@ -307,7 +303,7 @@ export default function DetailScreen({ moodViz = "ribbon" }: DetailScreenProps) 
                 </span>
                 <div style={{ flex: 1 }} />
                 <div style={{ display: "flex", gap: 8 }}>
-                  {["positive", "excited", "neutral", "hesitant"].map((k) => {
+                  {["positive", "enthusiastic", "neutral", "concerned"].map((k) => {
                     const e = getEmotion(k);
                     return (
                       <span key={k} className="emo" style={{ fontSize: 9.5 }}>
@@ -372,7 +368,27 @@ export default function DetailScreen({ moodViz = "ribbon" }: DetailScreenProps) 
                   <span style={{ fontSize: 11, color: "var(--accent)", fontFamily: "var(--font-mono)", fontVariantNumeric: "tabular-nums" }}>
                     {formatTime(m.start_seconds)}
                   </span>
-                  <EmotionDot emo={m.mood ?? "neutral"} />
+                  {(() => {
+                    const mood = m.mood ?? "neutral";
+                    const e = getEmotion(mood);
+                    const isNeutral = mood === "neutral";
+                    return (
+                      <span
+                        title={e.label}
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: 4,
+                          fontSize: 10.5,
+                          color: isNeutral ? "var(--text-3)" : e.color,
+                          fontWeight: isNeutral ? 400 : 500,
+                        }}
+                      >
+                        <span className="dot" style={{ background: e.dot }} />
+                        {e.label}
+                      </span>
+                    );
+                  })()}
                 </div>
                 <div style={{ fontSize: 13, lineHeight: 1.55, color: realIdx === activeIdx ? "var(--text)" : "var(--text-2)", paddingLeft: 26 }}>
                   {search ? highlight(m.text, search) : m.text}
@@ -391,7 +407,7 @@ export default function DetailScreen({ moodViz = "ribbon" }: DetailScreenProps) 
             { k: "summary" as const, label: "Summary", icon: Icons.Sparkles },
             { k: "insights" as const, label: "Insights", icon: Icons.Eye },
             { k: "emotions" as const, label: "Emotions", icon: Icons.TrendingUp },
-            { k: "notes" as const, label: "Notes", icon: Icons.Edit, count: notes.length },
+            { k: "notes" as const, label: "Notes", icon: Icons.Edit, count: notesData?.length ?? 0 },
           ].map((t) => (
             <button
               key={t.k}
@@ -425,21 +441,14 @@ export default function DetailScreen({ moodViz = "ribbon" }: DetailScreenProps) 
           {tab === "summary" && (
             <SummaryTab
               call={call}
-              actions={currentActions}
-              setActions={setActions}
               participants={currentParticipants}
               setParticipants={setParticipants}
             />
           )}
-          {tab === "insights" && <InsightsTab call={call} jumpTo={jumpTo} />}
+          {tab === "insights" && <InsightsTab call={call} participants={currentParticipants} jumpTo={jumpTo} />}
           {tab === "emotions" && <EmotionsTab call={call} />}
           {tab === "notes" && (
-            <NotesTab
-              notes={notes}
-              setNotes={setNotes}
-              newNote={newNote}
-              setNewNote={setNewNote}
-            />
+            <NotesTab callId={id} newNote={newNote} setNewNote={setNewNote} />
           )}
         </div>
       </div>
@@ -509,13 +518,11 @@ function Section({ icon: I, title, count, tone, children, collapsible, defaultOp
 
 interface SummaryTabProps {
   call: ReturnType<typeof useCall>["data"] & object;
-  actions: ActionItem[];
-  setActions: (a: ActionItem[] | null) => void;
   participants: Participant[];
   setParticipants: (p: Participant[] | null) => void;
 }
 
-function SummaryTab({ call, actions, setActions, participants, setParticipants }: SummaryTabProps) {
+function SummaryTab({ call, participants, setParticipants }: SummaryTabProps) {
   if (!call) return null;
 
   const updateP = (i: number, patch: Partial<Participant>) =>
@@ -549,30 +556,6 @@ function SummaryTab({ call, actions, setActions, participants, setParticipants }
     <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
       <Section icon={Icons.Sparkles} title="Recap">
         <p style={{ margin: 0, fontSize: 13.5, lineHeight: 1.65, color: "var(--text-2)" }}>{summary}</p>
-      </Section>
-
-      <Section icon={Icons.Check} title="Action items" count={actions.length}>
-        <div style={{ display: "flex", flexDirection: "column" }}>
-          {actions.map((a, i) => (
-            <div key={a.id} style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "10px 0", borderBottom: i < actions.length - 1 ? "1px solid var(--border)" : "none" }}>
-              <button
-                onClick={() => setActions(actions.map((x, idx) => (idx === i ? { ...x, done: !x.done } : x)))}
-                className={`checkbox ${a.done ? "checkbox--on" : ""}`}
-                style={{ marginTop: 2 }}
-              >
-                {a.done && <Icons.Check size={9} />}
-              </button>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 13, color: a.done ? "var(--text-3)" : "var(--text)", textDecoration: a.done ? "line-through" : "none" }}>
-                  {a.text}
-                </div>
-                <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 4 }}>
-                  <span style={{ fontSize: 10.5, color: "var(--text-4)" }}>Due {a.due_date}</span>
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
       </Section>
 
       <div className="pair-grid" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 14 }}>
@@ -629,7 +612,7 @@ function SummaryTab({ call, actions, setActions, participants, setParticipants }
         )}
       </div>
 
-      <Section icon={Icons.File} title="Transcript information" defaultOpen={false} collapsible>
+      <Section icon={Icons.File} title="Transcript information" defaultOpen={true} collapsible>
         <div style={{ display: "grid", gridTemplateColumns: "auto 1fr", gap: "8px 16px", fontSize: 12.5 }}>
           <span style={{ color: "var(--text-3)" }}>Language</span>
           <span>{formatLanguage(call.language)}</span>
@@ -659,7 +642,116 @@ function SummaryTab({ call, actions, setActions, participants, setParticipants }
             </button>
           </div>
         </div>
+
+        <ReviewQueue call={call} participants={participants} />
       </Section>
+    </div>
+  );
+}
+
+interface ReviewQueueProps {
+  call: NonNullable<ReturnType<typeof useCall>["data"]>;
+  participants: Participant[];
+}
+
+function ReviewQueue({ call, participants }: ReviewQueueProps) {
+  const updateSegment = useUpdateSegment();
+  const toast = useToast();
+  const [drafts, setDrafts] = useState<Record<number, { speaker_label: string; text: string }>>({});
+
+  const flagged = call.segments.filter((s) => s.needs_review);
+  if (flagged.length === 0) return null;
+
+  const knownLabels = Array.from(
+    new Set([
+      ...participants.map((p) => p.speaker_label).filter(Boolean),
+      ...call.segments.map((s) => s.speaker_label),
+    ])
+  );
+
+  const draftFor = (seg: typeof flagged[number]) =>
+    drafts[seg.idx] ?? { speaker_label: seg.speaker_label, text: seg.text };
+
+  const setField = (idx: number, patch: Partial<{ speaker_label: string; text: string }>) =>
+    setDrafts((d) => ({ ...d, [idx]: { ...draftFor(call.segments[idx]), ...patch } }));
+
+  const save = (seg: typeof flagged[number]) => {
+    const draft = draftFor(seg);
+    const patch: { speaker_label?: string; text?: string } = {};
+    if (draft.speaker_label && draft.speaker_label !== seg.speaker_label) patch.speaker_label = draft.speaker_label;
+    if (draft.text !== seg.text) patch.text = draft.text;
+    // Even if nothing changed, send an empty PATCH to clear the needs_review flag.
+    updateSegment.mutate(
+      { callId: call.id, idx: seg.idx, patch },
+      {
+        onSuccess: () => setDrafts((d) => { const n = { ...d }; delete n[seg.idx]; return n; }),
+        onError: (err) => toast.show(err instanceof Error ? err.message : "Failed to update segment", "error"),
+      }
+    );
+  };
+
+  return (
+    <div style={{ marginTop: 18, padding: 12, borderRadius: 10, border: "1px solid rgba(245, 158, 11, 0.35)", background: "rgba(245, 158, 11, 0.08)" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+        <div style={{ width: 22, height: 22, borderRadius: 6, background: "rgba(245, 158, 11, 0.18)", color: "var(--warn, #f59e0b)", display: "grid", placeItems: "center" }}>
+          <Icons.AlertTriangle size={12} />
+        </div>
+        <div>
+          <div style={{ fontSize: 12.5, fontWeight: 600, color: "var(--text)" }}>
+            {flagged.length} segment{flagged.length === 1 ? "" : "s"} need review
+          </div>
+          <div style={{ fontSize: 11, color: "var(--text-3)", marginTop: 1 }}>
+            The diarizer flagged these as possibly belonging to a phantom speaker. Reassign or confirm.
+          </div>
+        </div>
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        {flagged.map((seg) => {
+          const draft = draftFor(seg);
+          return (
+            <div
+              key={seg.idx}
+              style={{ display: "flex", flexDirection: "column", gap: 6, padding: 10, background: "var(--bg-2)", border: "1px solid var(--border)", borderRadius: 8 }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, color: "var(--text-3)", fontVariantNumeric: "tabular-nums" }}>
+                <span style={{ fontFamily: "var(--font-mono)" }}>{formatTime(seg.start_seconds)}</span>
+                <span style={{ color: "var(--text-4)" }}>·</span>
+                <span>currently <span style={{ color: "var(--text-2)" }}>{seg.speaker_label}</span></span>
+              </div>
+              <textarea
+                value={draft.text}
+                onChange={(e) => setField(seg.idx, { text: e.target.value })}
+                rows={2}
+                style={{ background: "var(--bg)", border: "1px solid var(--border)", borderRadius: 6, padding: 8, color: "var(--text)", fontSize: 12.5, outline: "none", fontFamily: "inherit", resize: "vertical" }}
+              />
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <span style={{ fontSize: 11, color: "var(--text-3)" }}>Reassign to</span>
+                <select
+                  value={draft.speaker_label}
+                  onChange={(e) => setField(seg.idx, { speaker_label: e.target.value })}
+                  className="input"
+                  style={{ height: 24, fontSize: 11.5, padding: "0 6px", flex: 1 }}
+                >
+                  {knownLabels.map((label) => (
+                    <option key={label} value={label}>{label}</option>
+                  ))}
+                </select>
+                <button
+                  className="btn btn--sm btn--primary"
+                  onClick={() => save(seg)}
+                  disabled={updateSegment.isPending}
+                  title="Save & clear review flag"
+                >
+                  {updateSegment.isPending ? "Saving…" : "Confirm"}
+                </button>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      <div style={{ marginTop: 8, fontSize: 11, color: "var(--text-3)" }}>
+        Need a new speaker? Use <span style={{ color: "var(--text-2)" }}>Add participant</span> above with a fresh label, then assign these segments to it.
+      </div>
     </div>
   );
 }
@@ -668,10 +760,11 @@ function SummaryTab({ call, actions, setActions, participants, setParticipants }
 
 interface InsightsTabProps {
   call: NonNullable<ReturnType<typeof useCall>["data"]>;
+  participants: Participant[];
   jumpTo: (idx: number) => void;
 }
 
-function InsightsTab({ call, jumpTo }: InsightsTabProps) {
+function InsightsTab({ call, participants, jumpTo }: InsightsTabProps) {
   const meta: Record<string, { icon: React.ComponentType<{ size?: number }>; color: string; label: string }> = {
     "buying-signal": { icon: Icons.TrendingUp, color: "var(--accent)", label: "Buying signal" },
     objection: { icon: Icons.AlertTriangle, color: "#f59e0b", label: "Objection" },
@@ -679,11 +772,27 @@ function InsightsTab({ call, jumpTo }: InsightsTabProps) {
     highlight: { icon: Icons.Bookmark, color: "#a78bfa", label: "Highlight" },
   };
 
-  // Backend returns fractions 0..1; convert to percentages once and use the
-  // rounded value for display, raw value for the proportional bar widths.
-  const talkRatioFrac = call.analysis?.talk_ratio ?? { rep: 0.5, client: 0.5 };
+  // Recompute talk ratio from current segments + participants so manual side
+  // edits (Customer/Internal in the Transcript info panel) reflect immediately,
+  // without waiting for the backend Analysis to be regenerated.
+  const sideBySpeaker = new Map<string, "rep" | "client">();
+  for (const p of participants) {
+    if (p.speaker_label) sideBySpeaker.set(p.speaker_label, p.side);
+  }
+  let repSeconds = 0;
+  let clientSeconds = 0;
+  for (const seg of call.segments) {
+    const dur = Math.max(0, seg.end_seconds - seg.start_seconds);
+    const side = sideBySpeaker.get(seg.speaker_label);
+    if (side === "rep") repSeconds += dur;
+    else if (side === "client") clientSeconds += dur;
+  }
+  const totalAttributed = repSeconds + clientSeconds;
+  const talkRatioFrac = totalAttributed > 0
+    ? { rep: repSeconds / totalAttributed, client: clientSeconds / totalAttributed }
+    : (call.analysis?.talk_ratio ?? { rep: 0.5, client: 0.5 });
   const repPct = Math.round(talkRatioFrac.rep * 100);
-  const clientPct = Math.round(talkRatioFrac.client * 100);
+  const clientPct = 100 - repPct;
   const talkRatioHealth =
     talkRatioFrac.rep > 0.7
       ? { label: "Rep-dominated", color: "#f59e0b" }
@@ -769,11 +878,39 @@ function InsightsTab({ call, jumpTo }: InsightsTabProps) {
 
 // ---- Emotions Tab ----
 
+const POSITIVE_MOODS = new Set(["positive", "enthusiastic"]);
+const NEGATIVE_MOODS = new Set(["negative", "frustrated", "concerned", "confused"]);
+
+function sentimentLabel(score: number): string {
+  if (score > 0.3) return "Net Positive";
+  if (score < -0.3) return "Net Negative";
+  return "Net Neutral";
+}
+
 function EmotionsTab({ call }: { call: NonNullable<ReturnType<typeof useCall>["data"]> }) {
   const total = Object.values(call.emotion_distribution).reduce((a, b) => a + b, 0) || 1;
-  const overallSentiment = call.sentiment_score ?? 0;
 
   const durationStr = formatDuration(call.duration_seconds);
+
+  // Per-segment counts grouped into positive/negative/neutral buckets.
+  const positiveSegments = Object.entries(call.emotion_distribution)
+    .filter(([k]) => POSITIVE_MOODS.has(k))
+    .reduce((sum, [, v]) => sum + v, 0);
+  const negativeSegments = Object.entries(call.emotion_distribution)
+    .filter(([k]) => NEGATIVE_MOODS.has(k))
+    .reduce((sum, [, v]) => sum + v, 0);
+  const segmentTotal = call.emotion_timeline.length;
+
+  // Derive sentiment from the actual segment distribution instead of the LLM's
+  // categorical overall_sentiment label. The label can mark a call "+1.00 positive"
+  // even when 67% of segments are neutral, which is confusing right next to the
+  // distribution chart. Range: [-1, 1].
+  const overallSentiment = segmentTotal > 0
+    ? (positiveSegments - negativeSegments) / segmentTotal
+    : 0;
+  const segmentSummary = segmentTotal === 0
+    ? "No segments analyzed"
+    : `${positiveSegments} positive · ${negativeSegments} negative of ${segmentTotal} segments`;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 22 }}>
@@ -787,8 +924,8 @@ function EmotionsTab({ call }: { call: NonNullable<ReturnType<typeof useCall>["d
             {overallSentiment.toFixed(2)}
           </div>
           <div style={{ paddingBottom: 4 }}>
-            <div style={{ fontSize: 14, fontWeight: 600, color: "var(--text)" }}>Net Positive</div>
-            <div style={{ fontSize: 12, color: "var(--text-3)", marginTop: 2 }}>Trended positive in 4 of 5 segments</div>
+            <div style={{ fontSize: 14, fontWeight: 600, color: "var(--text)" }}>{sentimentLabel(overallSentiment)}</div>
+            <div style={{ fontSize: 12, color: "var(--text-3)", marginTop: 2 }}>{segmentSummary}</div>
           </div>
         </div>
         <div style={{ display: "flex", height: 24, borderRadius: 4, overflow: "hidden", gap: 1 }}>
@@ -831,73 +968,102 @@ function EmotionsTab({ call }: { call: NonNullable<ReturnType<typeof useCall>["d
 
 // ---- Notes Tab ----
 
-interface Note {
-  when: string;
-  text: string;
-}
-
 interface NotesTabProps {
-  notes: Note[];
-  setNotes: (n: Note[]) => void;
+  callId: string;
   newNote: string;
   setNewNote: (v: string) => void;
 }
 
-function NotesTab({ notes, setNotes, newNote, setNewNote }: NotesTabProps) {
-  const [editingIdx, setEditingIdx] = useState<number | null>(null);
+function formatNoteWhen(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  return d.toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+}
+
+function NotesTab({ callId, newNote, setNewNote }: NotesTabProps) {
+  const { data: notes = [], isLoading } = useCallNotes(callId);
+  const createNote = useCreateNote();
+  const updateNote = useUpdateNote();
+  const deleteNote = useDeleteNote();
+  const toast = useToast();
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [editText, setEditText] = useState("");
 
   const submit = () => {
-    if (!newNote.trim()) return;
-    setNotes([...notes, { when: "Just now", text: newNote.trim() }]);
-    setNewNote("");
+    const text = newNote.trim();
+    if (!text || createNote.isPending) return;
+    createNote.mutate(
+      { callId, text },
+      {
+        onSuccess: () => setNewNote(""),
+        onError: (err) => toast.show(err instanceof Error ? err.message : "Failed to add note", "error"),
+      }
+    );
   };
-  const startEdit = (i: number) => { setEditingIdx(i); setEditText(notes[i].text); };
+  const startEdit = (n: Note) => { setEditingId(n.id); setEditText(n.text); };
   const saveEdit = () => {
-    if (!editText.trim() || editingIdx === null) return;
-    setNotes(notes.map((n, idx) => (idx === editingIdx ? { ...n, text: editText.trim() } : n)));
-    setEditingIdx(null);
+    const text = editText.trim();
+    if (!text || editingId === null) return;
+    updateNote.mutate(
+      { callId, noteId: editingId, text },
+      {
+        onSuccess: () => setEditingId(null),
+        onError: (err) => toast.show(err instanceof Error ? err.message : "Failed to update note", "error"),
+      }
+    );
   };
-  const removeNote = (i: number) => setNotes(notes.filter((_, idx) => idx !== i));
+  const removeNote = (id: string) => {
+    deleteNote.mutate(
+      { callId, noteId: id },
+      {
+        onError: (err) => toast.show(err instanceof Error ? err.message : "Failed to delete note", "error"),
+      }
+    );
+  };
 
   return (
     <div style={{ maxWidth: 720 }}>
       <Section icon={Icons.Edit} title="My notes" count={notes.length}>
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          {notes.length === 0 && (
+          {!isLoading && notes.length === 0 && (
             <div style={{ padding: "24px 16px", textAlign: "center", color: "var(--text-4)", fontSize: 12.5, border: "1px dashed var(--border)", borderRadius: 10 }}>
               No notes yet. Add a private note about this call below.
             </div>
           )}
-          {notes.map((n, i) => (
-            <div key={i} className="card" style={{ padding: "10px 12px", display: "flex", flexDirection: "column", gap: 6 }}>
+          {notes.map((n) => (
+            <div key={n.id} className="card" style={{ padding: "10px 12px", display: "flex", flexDirection: "column", gap: 6 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <span style={{ fontSize: 11, color: "var(--text-4)", fontVariantNumeric: "tabular-nums" }}>{n.when}</span>
+                <span style={{ fontSize: 11, color: "var(--text-4)", fontVariantNumeric: "tabular-nums" }}>
+                  {formatNoteWhen(n.created_at)}
+                  {n.updated_at !== n.created_at && <span style={{ marginLeft: 6, fontStyle: "italic" }}>· edited</span>}
+                </span>
                 <div style={{ flex: 1 }} />
-                {editingIdx !== i && (
+                {editingId !== n.id && (
                   <>
-                    <button className="iconbtn" title="Edit" onClick={() => startEdit(i)} style={{ width: 22, height: 22 }}>
+                    <button className="iconbtn" title="Edit" onClick={() => startEdit(n)} style={{ width: 22, height: 22 }}>
                       <Icons.Edit size={11} />
                     </button>
-                    <button className="iconbtn" title="Delete" onClick={() => removeNote(i)} style={{ width: 22, height: 22 }}>
+                    <button className="iconbtn" title="Delete" onClick={() => removeNote(n.id)} style={{ width: 22, height: 22 }}>
                       <Icons.Trash size={11} />
                     </button>
                   </>
                 )}
               </div>
-              {editingIdx === i ? (
+              {editingId === n.id ? (
                 <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                   <textarea
                     value={editText}
                     onChange={(e) => setEditText(e.target.value)}
                     rows={3}
                     style={{ background: "var(--bg-2)", border: "1px solid var(--border)", borderRadius: 6, padding: 8, color: "var(--text)", fontSize: 13, outline: "none", fontFamily: "inherit", resize: "vertical" }}
-                    onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) saveEdit(); if (e.key === "Escape") setEditingIdx(null); }}
+                    onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) saveEdit(); if (e.key === "Escape") setEditingId(null); }}
                     autoFocus
                   />
                   <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
-                    <button className="btn btn--sm btn--ghost" onClick={() => setEditingIdx(null)}>Cancel</button>
-                    <button className="btn btn--sm btn--primary" onClick={saveEdit}>Save</button>
+                    <button className="btn btn--sm btn--ghost" onClick={() => setEditingId(null)} disabled={updateNote.isPending}>Cancel</button>
+                    <button className="btn btn--sm btn--primary" onClick={saveEdit} disabled={updateNote.isPending || !editText.trim()}>
+                      {updateNote.isPending ? "Saving…" : "Save"}
+                    </button>
                   </div>
                 </div>
               ) : (
@@ -915,15 +1081,16 @@ function NotesTab({ notes, setNotes, newNote, setNewNote }: NotesTabProps) {
             rows={3}
             style={{ background: "transparent", border: "none", width: "100%", resize: "none", color: "var(--text)", fontSize: 13, outline: "none", fontFamily: "inherit" }}
             onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) submit(); }}
+            disabled={createNote.isPending}
           />
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 4 }}>
             <span style={{ fontSize: 11, color: "var(--text-4)" }}>
               Only you can see your notes · <span className="kbd">⌘</span> <span className="kbd">↵</span> to save
             </span>
             <div style={{ flex: 1 }} />
-            <button className="btn btn--sm btn--primary" onClick={submit} disabled={!newNote.trim()}>
+            <button className="btn btn--sm btn--primary" onClick={submit} disabled={!newNote.trim() || createNote.isPending}>
               <Icons.Plus size={11} />
-              Add note
+              {createNote.isPending ? "Adding…" : "Add note"}
             </button>
           </div>
         </div>

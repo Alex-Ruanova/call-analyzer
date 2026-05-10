@@ -1,9 +1,8 @@
 from __future__ import annotations
 
-from datetime import date
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Boolean, Date, Float, ForeignKey, Integer, String, Text
+from sqlalchemy import Float, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.db import Base
@@ -25,18 +24,3 @@ class Insight(Base):
     weight: Mapped[float] = mapped_column(Float, nullable=False, default=1.0)
 
     call: Mapped[Call] = relationship(back_populates="insights")
-
-
-class ActionItem(Base):
-    __tablename__ = "action_items"
-
-    id: Mapped[int] = mapped_column(primary_key=True)
-    call_id: Mapped[int] = mapped_column(
-        ForeignKey("calls.id", ondelete="CASCADE"), index=True
-    )
-    text: Mapped[str] = mapped_column(Text, nullable=False)
-    owner: Mapped[str | None] = mapped_column(String(255))
-    due_date: Mapped[date | None] = mapped_column(Date)
-    done: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
-
-    call: Mapped[Call] = relationship(back_populates="action_items")

@@ -8,6 +8,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import DetailScreen from "../screens/DetailScreen";
+import { ToastProvider } from "../components/Toast";
 import type { CallStatusResponse, CallDetail } from "../types";
 
 // ---- Minimal mock data ----
@@ -35,7 +36,6 @@ const doneCallDetail: Partial<CallDetail> = {
   language: "en",
   segments: [],
   insights: [],
-  action_items: [],
   analysis: null,
   participants: [],
   pain_points: [],
@@ -58,6 +58,11 @@ vi.mock("../api/hooks", () => ({
   useTags: () => ({ data: [] }),
   useClients: () => ({ data: [] }),
   useUpdateParticipants: () => ({ mutate: () => {} }),
+  useCallNotes: () => ({ data: [] }),
+  useCreateNote: () => ({ mutate: () => {}, isPending: false }),
+  useUpdateNote: () => ({ mutate: () => {}, isPending: false }),
+  useDeleteNote: () => ({ mutate: () => {} }),
+  useUpdateSegment: () => ({ mutate: () => {}, isPending: false }),
 }));
 
 vi.mock("../App", () => ({
@@ -69,13 +74,13 @@ vi.mock("../App", () => ({
 function renderDetail(id = "42") {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
-    <QueryClientProvider client={qc}>
+    <QueryClientProvider client={qc}><ToastProvider>
       <MemoryRouter initialEntries={[`/calls/${id}`]}>
         <Routes>
           <Route path="/calls/:id" element={<DetailScreen />} />
         </Routes>
       </MemoryRouter>
-    </QueryClientProvider>
+    </ToastProvider></QueryClientProvider>
   );
 }
 

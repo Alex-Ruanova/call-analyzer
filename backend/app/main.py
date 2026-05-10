@@ -10,6 +10,7 @@ from app.api.calls import router as calls_router
 from app.api.clients import router as clients_router
 from app.api.dashboard import router as dashboard_router
 from app.api.middleware import APIKeyMiddleware, RateLimitMiddleware
+from app.api.notes import router as notes_router
 from app.api.tags import router as tags_router
 from app.api.taxonomy import router as taxonomy_router
 from app.core.config import settings
@@ -49,6 +50,7 @@ async def health() -> dict[str, str]:
 
 app.include_router(calls_router, prefix="/api")
 app.include_router(clients_router, prefix="/api")
+app.include_router(notes_router, prefix="/api")
 app.include_router(tags_router, prefix="/api")
 app.include_router(dashboard_router, prefix="/api")
 app.include_router(taxonomy_router, prefix="/api")

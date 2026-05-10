@@ -58,6 +58,7 @@ export interface TranscriptSegment {
   speaker_role: string | null;
   text: string;
   mood: string | null;
+  needs_review: boolean;
 }
 
 // ---- Tags ----
@@ -78,13 +79,12 @@ export interface Insight {
   weight: number;
 }
 
-// ---- Action items ----
-export interface ActionItem {
+// ---- Notes (user-authored, persisted) ----
+export interface Note {
   id: string;
   text: string;
-  owner: string | null;
-  due_date: string | null;
-  done: boolean;
+  created_at: string;
+  updated_at: string;
 }
 
 // ---- Analysis ----
@@ -126,7 +126,6 @@ export interface CallDetail extends CallSummary {
   language: string | null;
   segments: TranscriptSegment[];
   insights: Insight[];
-  action_items: ActionItem[];
   analysis: Analysis | null;
   participants: Participant[];
   pain_points: Insight[];
